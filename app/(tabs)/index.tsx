@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator,
@@ -16,7 +16,12 @@ import { Colors, Spacing, Typography } from '../../constants/theme';
 export default function HomeScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const [summary, setSummary] = useState({ totalHarvestToday: 0, totalHarvestWeek: 0, totalRevenueMonth: 0 });
+  const [summary, setSummary] = useState({
+    totalHarvestToday: 0, totalHarvestWeek: 0, totalRevenueMonth: 0,
+    changeRateToday: null as number | null,
+    changeRateWeek: null as number | null,
+    changeRateMonth: null as number | null,
+  });
   const [profile, setProfile] = useState<{ name: string; region: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -79,7 +84,7 @@ export default function HomeScreen() {
               title="오늘 수확량"
               value={summary.totalHarvestToday.toLocaleString()}
               unit="kg"
-              changeRate={12.5}
+              changeRate={summary.changeRateToday}
               compareLabel="어제 대비"
               icon="🌾"
               color={Colors.primary}
@@ -89,7 +94,7 @@ export default function HomeScreen() {
               title="이번 주 수확"
               value={summary.totalHarvestWeek.toLocaleString()}
               unit="kg"
-              changeRate={-3.2}
+              changeRate={summary.changeRateWeek}
               compareLabel="저번주 대비"
               icon="📦"
             />
@@ -100,7 +105,7 @@ export default function HomeScreen() {
               title="이번 달 매출"
               value={(summary.totalRevenueMonth / 10000).toFixed(0)}
               unit="만원"
-              changeRate={8.1}
+              changeRate={summary.changeRateMonth}
               compareLabel="저번달 대비"
               icon="💰"
               color={Colors.success}

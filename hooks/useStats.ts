@@ -85,15 +85,36 @@ export async function fetchSummary(userId: string) {
   const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().split('T')[0];
   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
 
-  const [todayHarvest, weekHarvest, monthRevenue] = await Promise.all([
+  const lastWeekStartStr = lastWeekStart.toISOString().split('T')[0];
+  const lastWeekEndStr = lastWeekEnd.toISOString().split('T')[0];
+
+  const [todayHarvest, yesterdayHarvest, weekHarvest, lastWeekHarvest, monthRevenue, lastMonthRevenue] = await Promise.all([
     supabase.from('harvest_records').select('quantity').eq('user_id', userId).eq('date', todayStr),
+    supabase.from('harvest_records').select('quantity').eq('user_id', userId).eq('date', yesterdayStr),
     supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', weekStartStr).lte('date', todayStr),
+    supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', lastWeekStartStr).lte('date', lastWeekEndStr),
     supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', monthStart).lte('date', todayStr),
+    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', lastMonthStart).lte('date', lastMonthEnd),
   ]);
 
   const totalHarvestToday = todayHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
+  const totalHarvestYesterday = yesterdayHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
   const totalHarvestWeek = weekHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
+  const totalHarvestLastWeek = lastWeekHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
   const totalRevenueMonth = monthRevenue.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
+  const totalRevenueLastMonth = lastMonthRevenue.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
 
-  return { totalHarvestToday, totalHarvestWeek, totalRevenueMonth };
+  const calcRate = (current: number, prev: number): number | null => {
+    if (prev === 0) return null;
+    return ((current - prev) / prev) * 100;
+  };
+
+  return {
+    totalHarvestToday,
+    totalHarvestWeek,
+    totalRevenueMonth,
+    changeRateToday: calcRate(totalHarvestToday, totalHarvestYesterday),
+    changeRateWeek: calcRate(totalHarvestWeek, totalHarvestLastWeek),
+    changeRateMonth: calcRate(totalRevenueMonth, totalRevenueLastMonth),
+  };
 }

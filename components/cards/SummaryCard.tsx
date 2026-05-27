@@ -8,7 +8,7 @@ interface SummaryCardProps {
   title: string;
   value: string;
   unit: string;
-  changeRate: number;
+  changeRate: number | null;
   compareLabel: string;
   icon: string;
   color?: string;
@@ -23,10 +23,12 @@ export function SummaryCard({ title, value, unit, changeRate, compareLabel, icon
       </View>
       <Text style={[styles.value, color ? { color } : {}]}>{value}</Text>
       <Text style={styles.unit}>{unit}</Text>
-      <View style={styles.footer}>
-        <StatBadge value={changeRate} />
-        <Text style={styles.compareLabel}> {compareLabel}</Text>
-      </View>
+      {changeRate !== null && (
+        <View style={styles.footer}>
+          <StatBadge value={changeRate} />
+          <Text style={styles.compareLabel}> {compareLabel}</Text>
+        </View>
+      )}
     </Card>
   );
 }

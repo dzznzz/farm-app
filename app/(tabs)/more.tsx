@@ -1,13 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useAuth } from '../../hooks/useAuth';
-import { sendChatMessage, ChatMessage } from '../../lib/gemini';
+import { sendChatMessage, getDailyUsage, ChatMessage } from '../../lib/gemini';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -81,20 +82,50 @@ function ChatbotPage({ onBack, userId }: { onBack: () => void; userId?: string }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const flatRef = useRef<FlatList>(null);
+  const storageKey = `chat_history_${userId ?? 'guest'}`;
+
+  useEffect(() => {
+    getDailyUsage().then((u) => setRemaining(u.remaining));
+    AsyncStorage.getItem(storageKey).then((raw) => {
+      if (raw) {
+        const saved: ChatMessage[] = JSON.parse(raw);
+        setMessages(saved);
+        setTimeout(() => flatRef.current?.scrollToEnd({ animated: false }), 100);
+      }
+    });
+  }, [userId]);
+
+  const saveMessages = async (updated: ChatMessage[]) => {
+    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
+  };
+
+  const clearHistory = () => {
+    Alert.alert('대화 초기화', '대화 기록을 모두 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => { setMessages([]); AsyncStorage.removeItem(storageKey); } },
+    ]);
+  };
 
   const send = async (text: string) => {
     if (!text.trim() || loading) return;
     const userMsg: ChatMessage = { role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    const updatedWithUser = [...messages, userMsg];
+    setMessages(updatedWithUser);
     setInput('');
     setLoading(true);
 
     try {
       const reply = await sendChatMessage(messages, text);
-      setMessages((prev) => [...prev, { role: 'model', content: reply }]);
-    } catch {
-      setMessages((prev) => [...prev, { role: 'model', content: '죄송합니다. 잠시 후 다시 시도해주세요.' }]);
+      const updatedWithReply = [...updatedWithUser, { role: 'model' as const, content: reply }];
+      setMessages(updatedWithReply);
+      saveMessages(updatedWithReply);
+      getDailyUsage().then((u) => setRemaining(u.remaining));
+    } catch (e: any) {
+      const updatedWithError = [...updatedWithUser, { role: 'model' as const, content: e?.message ?? '죄송합니다. 잠시 후 다시 시도해주세요.' }];
+      setMessages(updatedWithError);
+      saveMessages(updatedWithError);
     }
     setLoading(false);
     setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
@@ -105,7 +136,14 @@ function ChatbotPage({ onBack, userId }: { onBack: () => void; userId?: string }
       <View style={styles.subHeader}>
         <TouchableOpacity onPress={onBack}><Text style={styles.backBtn}>←</Text></TouchableOpacity>
         <Text style={styles.subTitle}>🤖 농업 AI 챗봇</Text>
-        <View style={{ width: 40 }} />
+        <View style={{ alignItems: 'flex-end', width: 50 }}>
+          <Text style={styles.usageText}>{remaining !== null ? `${remaining}/50` : ''}</Text>
+          {messages.length > 0 && (
+            <TouchableOpacity onPress={clearHistory}>
+              <Text style={{ fontSize: 10, color: Colors.textLight, marginTop: 2 }}>초기화</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -300,6 +338,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: { fontSize: 22, color: Colors.primary, fontWeight: '600' },
+  usageText: { fontSize: 12, color: Colors.textSub, fontWeight: '500', width: 40, textAlign: 'right' },
   subTitle: { ...Typography.h3 },
   chatList: { padding: Spacing.md, flexGrow: 1 },
   welcomeBox: { alignItems: 'center', paddingVertical: Spacing.xl },
