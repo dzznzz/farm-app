@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, ScrollView,
   TouchableOpacity, Alert, KeyboardAvoidingView, Platform,
@@ -13,12 +13,17 @@ import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 type TabType = 'harvest' | 'sales';
 
+const SIZE_OPTIONS = ['소', '중', '대', '특'];
+
 export default function InputScreen() {
   const { user } = useAuth();
   const [tab, setTab] = useState<TabType>('harvest');
   const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string }[]>([]);
   const [selectedFarm, setSelectedFarm] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [cropType, setCropType] = useState('');
+  const [variety, setVariety] = useState('');
+  const [size, setSize] = useState('');
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState('kg');
   const [pricePerUnit, setPricePerUnit] = useState('');
@@ -30,13 +35,22 @@ export default function InputScreen() {
     if (!user) return;
     supabase.from('farms').select('id, name, crop_type').eq('user_id', user.id)
       .then(({ data }) => {
-        if (data?.length) { setFarms(data); setSelectedFarm(data[0].id); }
+        if (data?.length) {
+          setFarms(data);
+          setSelectedFarm(data[0].id);
+          setCropType(data[0].crop_type);
+        }
       });
   }, [user]);
 
+  const handleFarmSelect = (farm: { id: string; name: string; crop_type: string }) => {
+    setSelectedFarm(farm.id);
+    setCropType(farm.crop_type);
+  };
+
   const handleSave = async () => {
     if (!user || !selectedFarm || !quantity) {
-      Alert.alert('입력 오류', '필수 항목을 입력하세요.');
+      Alert.alert('입력 오류', '농장, 수량은 필수 입력입니다.');
       return;
     }
     setLoading(true);
@@ -46,23 +60,34 @@ export default function InputScreen() {
         user_id: user.id,
         farm_id: selectedFarm,
         date,
+        crop_type: cropType || null,
+        variety: variety || null,
+        size: size || null,
         quantity: parseFloat(quantity),
         unit,
-        note,
+        note: note || null,
       });
       if (error) Alert.alert('저장 실패', error.message);
       else { Alert.alert('저장 완료', '수확량이 기록되었습니다.'); resetForm(); }
     } else {
       const qty = parseFloat(quantity);
       const price = parseFloat(pricePerUnit);
+      if (!pricePerUnit || isNaN(price)) {
+        Alert.alert('입력 오류', '단가를 입력하세요.');
+        setLoading(false);
+        return;
+      }
       const { error } = await supabase.from('sales_records').insert({
         user_id: user.id,
         farm_id: selectedFarm,
         date,
+        crop_type: cropType || null,
+        variety: variety || null,
+        size: size || null,
         quantity: qty,
         price_per_unit: price,
         total_revenue: qty * price,
-        buyer,
+        buyer: buyer || null,
       });
       if (error) Alert.alert('저장 실패', error.message);
       else { Alert.alert('저장 완료', '판매 기록이 저장되었습니다.'); resetForm(); }
@@ -72,6 +97,7 @@ export default function InputScreen() {
 
   const resetForm = () => {
     setQuantity(''); setPricePerUnit(''); setBuyer(''); setNote('');
+    setVariety(''); setSize('');
   };
 
   return (
@@ -97,7 +123,9 @@ export default function InputScreen() {
 
         <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
           <Card style={styles.formCard}>
-            <FormField label="날짜">
+
+            {/* 날짜 */}
+            <FormField label="날짜 *">
               <TextInput
                 style={styles.input}
                 value={date}
@@ -107,17 +135,18 @@ export default function InputScreen() {
               />
             </FormField>
 
+            {/* 농장 선택 */}
             {farms.length > 0 && (
-              <FormField label="농장 선택">
+              <FormField label="농장 선택 *">
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {farms.map((f) => (
                     <TouchableOpacity
                       key={f.id}
-                      style={[styles.farmChip, selectedFarm === f.id && styles.farmChipActive]}
-                      onPress={() => setSelectedFarm(f.id)}
+                      style={[styles.chip, selectedFarm === f.id && styles.chipActive]}
+                      onPress={() => handleFarmSelect(f)}
                     >
-                      <Text style={[styles.farmChipText, selectedFarm === f.id && styles.farmChipTextActive]}>
-                        {f.name} ({f.crop_type})
+                      <Text style={[styles.chipText, selectedFarm === f.id && styles.chipTextActive]}>
+                        {f.name}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -125,7 +154,53 @@ export default function InputScreen() {
               </FormField>
             )}
 
-            <FormField label={tab === 'harvest' ? '수확량' : '판매량'}>
+            {/* 작물 */}
+            <FormField label="작물">
+              <TextInput
+                style={styles.input}
+                value={cropType}
+                onChangeText={setCropType}
+                placeholder="예) 딸기, 토마토, 상추"
+                placeholderTextColor={Colors.textLight}
+              />
+            </FormField>
+
+            {/* 품종 */}
+            <FormField label="품종">
+              <TextInput
+                style={styles.input}
+                value={variety}
+                onChangeText={setVariety}
+                placeholder="예) 설향, 금실, 죽향"
+                placeholderTextColor={Colors.textLight}
+              />
+            </FormField>
+
+            {/* 사이즈 */}
+            <FormField label="사이즈">
+              <View style={styles.chipRow}>
+                {SIZE_OPTIONS.map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.chip, size === s && styles.chipActive]}
+                    onPress={() => setSize(size === s ? '' : s)}
+                  >
+                    <Text style={[styles.chipText, size === s && styles.chipTextActive]}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TextInput
+                  style={[styles.input, styles.sizeInput]}
+                  value={SIZE_OPTIONS.includes(size) ? '' : size}
+                  onChangeText={(v) => setSize(v)}
+                  placeholder="직접 입력"
+                  placeholderTextColor={Colors.textLight}
+                  onFocus={() => { if (SIZE_OPTIONS.includes(size)) setSize(''); }}
+                />
+              </View>
+            </FormField>
+
+            {/* 수량 */}
+            <FormField label={tab === 'harvest' ? '수확량 *' : '판매량 *'}>
               <View style={styles.row}>
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
@@ -135,23 +210,24 @@ export default function InputScreen() {
                   placeholderTextColor={Colors.textLight}
                   keyboardType="decimal-pad"
                 />
-                <View style={styles.unitContainer}>
+                <View style={styles.chipRow}>
                   {['kg', '개', '박스'].map((u) => (
                     <TouchableOpacity
                       key={u}
-                      style={[styles.unitBtn, unit === u && styles.unitBtnActive]}
+                      style={[styles.chip, unit === u && styles.chipActive]}
                       onPress={() => setUnit(u)}
                     >
-                      <Text style={[styles.unitText, unit === u && styles.unitTextActive]}>{u}</Text>
+                      <Text style={[styles.chipText, unit === u && styles.chipTextActive]}>{u}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
             </FormField>
 
+            {/* 판매 전용 필드 */}
             {tab === 'sales' && (
               <>
-                <FormField label="단가 (원)">
+                <FormField label="단가 (원) *">
                   <TextInput
                     style={styles.input}
                     value={pricePerUnit}
@@ -183,6 +259,7 @@ export default function InputScreen() {
               </>
             )}
 
+            {/* 메모 */}
             <FormField label="메모 (선택)">
               <TextInput
                 style={[styles.input, styles.textarea]}
@@ -234,12 +311,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     padding: 3,
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: Radius.full,
-  },
+  tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: Radius.full },
   tabActive: { backgroundColor: Colors.surface },
   tabText: { fontSize: 14, fontWeight: '600', color: Colors.textSub },
   tabTextActive: { color: Colors.primary },
@@ -255,31 +327,20 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   textarea: { height: 80, textAlignVertical: 'top' },
-  row: { flexDirection: 'row', gap: Spacing.sm },
-  unitContainer: { flexDirection: 'row', gap: 4 },
-  unitBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.background,
-  },
-  unitBtnActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
-  unitText: { fontSize: 13, color: Colors.textSub, fontWeight: '600' },
-  unitTextActive: { color: Colors.primary },
-  farmChip: {
+  sizeInput: { flex: 1, paddingVertical: 8, minWidth: 80 },
+  row: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Radius.full,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginRight: 8,
     backgroundColor: Colors.background,
   },
-  farmChipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
-  farmChipText: { fontSize: 13, color: Colors.textSub, fontWeight: '500' },
-  farmChipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
+  chipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
+  chipText: { fontSize: 13, color: Colors.textSub, fontWeight: '500' },
+  chipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
   totalBox: {
     backgroundColor: Colors.primaryUltraLight,
     borderRadius: Radius.md,
