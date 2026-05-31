@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~56.0.13",
     "@react-native-async-storage/async-storage": "^3.1.0",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "@supabase/supabase-js": "^2.106.2",
     "expo": "~56.0.5",
     "expo-auth-session": "~56.0.13",

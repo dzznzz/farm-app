@@ -9,7 +9,7 @@
       },
       "ios": {
         "distribution": "internal",
-        "image": "macos-sequoia-15.3-xcode-16.2"
+        "image": "macos-sonoma-14.6-xcode-16.0"
       }
     },
     "production": {
@@ -18,7 +18,7 @@
       },
       "ios": {
         "distribution": "store",
-        "image": "macos-sequoia-15.3-xcode-16.2"
+        "image": "macos-sonoma-14.6-xcode-16.1"
       }
     }
   },
