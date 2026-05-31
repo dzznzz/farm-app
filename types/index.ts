@@ -91,3 +91,10 @@ export interface DailyStat {
 }
 
 export type PeriodType = 'day' | 'week' | 'month' | 'year';
+
+export interface BreakdownItem {
+  key: string;
+  harvest: number;
+  sales: number;
+  other: number;
+}

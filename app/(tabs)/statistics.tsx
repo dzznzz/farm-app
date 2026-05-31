@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BarChart, LineChart } from 'react-native-gifted-charts';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { BarChart } from 'react-native-gifted-charts';
 import { useAuth } from '../../hooks/useAuth';
-import { useStats } from '../../hooks/useStats';
+import { useStats, getDateRange } from '../../hooks/useStats';
+import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
+import { BreakdownModal } from '../../components/modals/BreakdownModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { PeriodType, DailyStat } from '../../types';
 
@@ -18,6 +21,13 @@ const PERIODS: { key: PeriodType; label: string }[] = [
   { key: 'month', label: '월별' },
   { key: 'year', label: '연별' },
 ];
+
+const COMPARE_LABELS: Record<PeriodType, { revenue: string; harvest: string }> = {
+  day: { revenue: '어제 대비 매출', harvest: '어제 대비 수확량' },
+  week: { revenue: '전주 대비 매출', harvest: '전주 대비 수확량' },
+  month: { revenue: '전월 대비 매출', harvest: '전월 대비 수확량' },
+  year: { revenue: '작년 대비 매출', harvest: '작년 대비 수확량' },
+};
 
 function groupStats(stats: DailyStat[], period: PeriodType): DailyStat[] {
   if (period === 'day') return stats.slice(-30);
@@ -52,10 +62,37 @@ function formatDate(date: string, period: PeriodType): string {
 export default function StatisticsScreen() {
   const { user } = useAuth();
   const { stats, loading, fetchStats } = useStats(user?.id);
-  const [period, setPeriod] = useState<PeriodType>('day');
+  const { period: paramPeriod } = useLocalSearchParams<{ period?: string }>();
+  const [period, setPeriod] = useState<PeriodType>((paramPeriod as PeriodType) ?? 'day');
   const [chartType, setChartType] = useState<'harvest' | 'revenue'>('harvest');
+  const [wasteTotal, setWasteTotal] = useState(0);
+  const [wasteLoading, setWasteLoading] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
-  useEffect(() => { fetchStats(period); }, [period]);
+  useEffect(() => { fetchStats(period); }, [period, user?.id]);
+
+  useEffect(() => {
+    if (paramPeriod && ['day', 'week', 'month', 'year'].includes(paramPeriod)) {
+      setPeriod(paramPeriod as PeriodType);
+    }
+  }, [paramPeriod]);
+
+  useFocusEffect(
+    useCallback(() => { fetchStats(period); }, [period, fetchStats])
+  );
+
+  useEffect(() => {
+    if (!user) return;
+    setWasteLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from('other_records')
+        .select('quantity')
+        .eq('user_id', user.id);
+      setWasteTotal(data?.reduce((s: any, r: any) => s + r.quantity, 0) ?? 0);
+      setWasteLoading(false);
+    })();
+  }, [user]);
 
   const grouped = groupStats(stats, period);
   const chartData = grouped.slice(-12).map((s) => ({
@@ -63,6 +100,7 @@ export default function StatisticsScreen() {
     label: formatDate(s.date, period),
     frontColor: Colors.primary,
   }));
+  const hasChartData = chartData.some((d) => d.value > 0);
 
   const total = grouped.reduce((acc, s) => ({
     harvest: acc.harvest + s.harvest,
@@ -70,11 +108,21 @@ export default function StatisticsScreen() {
     sales: acc.sales + s.sales,
   }), { harvest: 0, revenue: 0, sales: 0 });
 
-  const prevHalf = grouped.slice(0, Math.floor(grouped.length / 2));
-  const currHalf = grouped.slice(Math.floor(grouped.length / 2));
-  const prevRevenue = prevHalf.reduce((s, r) => s + r.revenue, 0);
-  const currRevenue = currHalf.reduce((s, r) => s + r.revenue, 0);
-  const revenueChange = prevRevenue > 0 ? ((currRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+  // 가장 최근 기간 vs 그 이전 기간 비교
+  const lastPeriod = grouped[grouped.length - 1];
+  const prevPeriod = grouped[grouped.length - 2];
+
+  const revenueChange = lastPeriod && prevPeriod && prevPeriod.revenue > 0
+    ? ((lastPeriod.revenue - prevPeriod.revenue) / prevPeriod.revenue) * 100
+    : null;
+
+  const harvestChange = lastPeriod && prevPeriod && prevPeriod.harvest > 0
+    ? ((lastPeriod.harvest - prevPeriod.harvest) / prevPeriod.harvest) * 100
+    : null;
+
+  const labels = COMPARE_LABELS[period];
+  const stockRemaining = total.harvest - total.sales - wasteTotal;
+  const { from: breakdownFrom, to: breakdownTo } = getDateRange(period);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -113,11 +161,11 @@ export default function StatisticsScreen() {
               {chartType === 'harvest' ? '수확량 추이' : '매출 추이'}
             </Text>
             <View style={styles.chartTypeTabs}>
-              {['harvest', 'revenue'].map((t) => (
+              {(['harvest', 'revenue'] as const).map((t) => (
                 <TouchableOpacity
                   key={t}
                   style={[styles.chartTypeBtn, chartType === t && styles.chartTypeBtnActive]}
-                  onPress={() => setChartType(t as any)}
+                  onPress={() => setChartType(t)}
                 >
                   <Text style={[styles.chartTypeText, chartType === t && styles.chartTypeTextActive]}>
                     {t === 'harvest' ? '수확' : '매출'}
@@ -129,7 +177,7 @@ export default function StatisticsScreen() {
 
           {loading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginVertical: 40 }} />
-          ) : chartData.length > 0 ? (
+          ) : chartData.length > 0 && hasChartData ? (
             <BarChart
               data={chartData}
               barWidth={chartData.length > 8 ? 18 : 28}
@@ -157,18 +205,70 @@ export default function StatisticsScreen() {
         <Card style={styles.compareCard}>
           <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>기간 비교</Text>
           {[
-            { label: '전기간 대비 매출', value: revenueChange },
-            { label: '전기간 대비 수확량', value: 5.2 },
+            { label: labels.revenue, value: revenueChange },
+            { label: labels.harvest, value: harvestChange },
           ].map((item) => (
             <View key={item.label} style={styles.compareRow}>
               <Text style={styles.compareLabel}>{item.label}</Text>
-              <StatBadge value={item.value} />
+              {item.value !== null ? (
+                <StatBadge value={item.value} />
+              ) : (
+                <Text style={styles.noDataText}>이전 데이터 없음</Text>
+              )}
             </View>
           ))}
         </Card>
 
+        <Card style={styles.stockCard}>
+          <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>잔여 재고</Text>
+          <View style={styles.stockRow}>
+            <View style={styles.stockItem}>
+              <Text style={styles.stockLabel}>수확량</Text>
+              <Text style={[styles.stockValue, { color: Colors.primary }]}>
+                {total.harvest.toLocaleString()}kg
+              </Text>
+            </View>
+            <Text style={styles.stockOp}>−</Text>
+            <View style={styles.stockItem}>
+              <Text style={styles.stockLabel}>판매량</Text>
+              <Text style={[styles.stockValue, { color: Colors.primaryDark }]}>
+                {total.sales.toLocaleString()}kg
+              </Text>
+            </View>
+            <Text style={styles.stockOp}>−</Text>
+            <View style={styles.stockItem}>
+              <Text style={styles.stockLabel}>기타</Text>
+              <Text style={[styles.stockValue, { color: Colors.danger }]}>
+                {wasteLoading ? '...' : `${wasteTotal.toLocaleString()}kg`}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.stockDivider} />
+          <View style={styles.stockResultRow}>
+            <Text style={styles.stockResultLabel}>재고</Text>
+            <Text style={[styles.stockResultValue, { color: stockRemaining >= 0 ? Colors.success : Colors.danger }]}>
+              {stockRemaining.toLocaleString()}kg
+            </Text>
+          </View>
+        </Card>
+
+        <TouchableOpacity style={styles.breakdownBtn} onPress={() => setShowBreakdown(true)}>
+          <Text style={styles.breakdownBtnText}>📊 작물·품종·사이즈별 상세 분석</Text>
+          <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
+        </TouchableOpacity>
+
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
+
+      {user && (
+        <BreakdownModal
+          visible={showBreakdown}
+          onClose={() => setShowBreakdown(false)}
+          userId={user.id}
+          from={breakdownFrom}
+          to={breakdownTo}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -184,22 +284,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     padding: 3,
   },
-  periodBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    alignItems: 'center',
-    borderRadius: Radius.full,
-  },
+  periodBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: Radius.full },
   periodBtnActive: { backgroundColor: Colors.surface },
   periodText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
   periodTextActive: { color: Colors.primary },
   scroll: { flex: 1 },
-  summaryRow: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    gap: Spacing.xs,
-  },
+  summaryRow: { flexDirection: 'row', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   summaryCard: { flex: 1, alignItems: 'center', paddingVertical: Spacing.md },
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
@@ -232,4 +322,21 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   compareLabel: { ...Typography.body },
+  noDataText: { ...Typography.caption, color: Colors.textLight },
+  stockCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.sm },
+  stockRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  stockItem: { flex: 1, alignItems: 'center' },
+  stockLabel: { ...Typography.caption, marginBottom: 4 },
+  stockValue: { fontSize: 15, fontWeight: '700' },
+  stockOp: { fontSize: 18, color: Colors.textSub, marginHorizontal: 4 },
+  stockDivider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.md },
+  stockResultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stockResultLabel: { ...Typography.bodyBold },
+  stockResultValue: { fontSize: 22, fontWeight: '800' },
+  breakdownBtn: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginHorizontal: Spacing.lg, marginTop: Spacing.sm, backgroundColor: Colors.primaryUltraLight,
+    borderRadius: Radius.md, padding: Spacing.md, borderWidth: 1, borderColor: Colors.primaryLight,
+  },
+  breakdownBtnText: { ...Typography.bodyBold, color: Colors.primaryDark },
 });

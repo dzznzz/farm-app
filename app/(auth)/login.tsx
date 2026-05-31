@@ -33,7 +33,7 @@ export default function LoginScreen() {
           colors={[Colors.primaryUltraLight, Colors.background]}
           style={styles.header}
         >
-          <Text style={styles.logo}>🌾</Text>
+          <Text style={styles.logo}>🫐</Text>
           <Text style={styles.appName}>농장관리</Text>
           <Text style={styles.tagline}>스마트한 농장 관리의 시작</Text>
         </LinearGradient>

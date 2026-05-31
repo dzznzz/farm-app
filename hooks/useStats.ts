@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { DailyStat } from '../types';
+import { DailyStat, BreakdownItem } from '../types';
 
-function getDateRange(period: 'day' | 'week' | 'month' | 'year') {
+export function getDateRange(period: 'day' | 'week' | 'month' | 'year') {
   const now = new Date();
   const start = new Date(now);
 
@@ -80,29 +80,33 @@ export async function fetchSummary(userId: string) {
   lastWeekStart.setDate(weekStart.getDate() - 7);
   const lastWeekEnd = new Date(weekStart);
   lastWeekEnd.setDate(weekStart.getDate() - 1);
-
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().split('T')[0];
-  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
-
   const lastWeekStartStr = lastWeekStart.toISOString().split('T')[0];
   const lastWeekEndStr = lastWeekEnd.toISOString().split('T')[0];
 
-  const [todayHarvest, yesterdayHarvest, weekHarvest, lastWeekHarvest, monthRevenue, lastMonthRevenue] = await Promise.all([
+  const [
+    todayHarvest, yesterdayHarvest,
+    weekHarvest, lastWeekHarvest,
+    todaySales, yesterdaySales,
+    weekSales, lastWeekSales,
+  ] = await Promise.all([
     supabase.from('harvest_records').select('quantity').eq('user_id', userId).eq('date', todayStr),
     supabase.from('harvest_records').select('quantity').eq('user_id', userId).eq('date', yesterdayStr),
     supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', weekStartStr).lte('date', todayStr),
     supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', lastWeekStartStr).lte('date', lastWeekEndStr),
-    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', monthStart).lte('date', todayStr),
-    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', lastMonthStart).lte('date', lastMonthEnd),
+    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).eq('date', todayStr),
+    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).eq('date', yesterdayStr),
+    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', weekStartStr).lte('date', todayStr),
+    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', lastWeekStartStr).lte('date', lastWeekEndStr),
   ]);
 
   const totalHarvestToday = todayHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
   const totalHarvestYesterday = yesterdayHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
   const totalHarvestWeek = weekHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
   const totalHarvestLastWeek = lastWeekHarvest.data?.reduce((s, r) => s + r.quantity, 0) ?? 0;
-  const totalRevenueMonth = monthRevenue.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
-  const totalRevenueLastMonth = lastMonthRevenue.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
+  const totalRevenueToday = todaySales.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
+  const totalRevenueYesterday = yesterdaySales.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
+  const totalRevenueWeek = weekSales.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
+  const totalRevenueLastWeek = lastWeekSales.data?.reduce((s, r) => s + r.total_revenue, 0) ?? 0;
 
   const calcRate = (current: number, prev: number): number | null => {
     if (prev === 0) return null;
@@ -111,10 +115,70 @@ export async function fetchSummary(userId: string) {
 
   return {
     totalHarvestToday,
+    totalRevenueToday,
     totalHarvestWeek,
-    totalRevenueMonth,
-    changeRateToday: calcRate(totalHarvestToday, totalHarvestYesterday),
-    changeRateWeek: calcRate(totalHarvestWeek, totalHarvestLastWeek),
-    changeRateMonth: calcRate(totalRevenueMonth, totalRevenueLastMonth),
+    totalRevenueWeek,
+    changeRateHarvestToday: calcRate(totalHarvestToday, totalHarvestYesterday),
+    changeRateRevenueToday: calcRate(totalRevenueToday, totalRevenueYesterday),
+    changeRateHarvestWeek: calcRate(totalHarvestWeek, totalHarvestLastWeek),
+    changeRateRevenueWeek: calcRate(totalRevenueWeek, totalRevenueLastWeek),
+  };
+}
+
+export async function fetchBreakdown(
+  userId: string,
+  from: string,
+  to: string
+): Promise<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[] }> {
+  const [harvestRes, salesRes, otherRes] = await Promise.all([
+    supabase.from('harvest_records')
+      .select('crop_type, variety, size, quantity')
+      .eq('user_id', userId).gte('date', from).lte('date', to),
+    supabase.from('sales_records')
+      .select('crop_type, variety, size, quantity')
+      .eq('user_id', userId).gte('date', from).lte('date', to),
+    supabase.from('other_records')
+      .select('crop_type, variety, size, quantity')
+      .eq('user_id', userId).gte('date', from).lte('date', to),
+  ]);
+
+  type Row = { crop_type?: string | null; variety?: string | null; size?: string | null; quantity: number };
+
+  function aggregate(records: Row[] | null, keyFn: (r: Row) => string): Record<string, number> {
+    const map: Record<string, number> = {};
+    records?.forEach((r) => {
+      const key = keyFn(r) || '미입력';
+      map[key] = (map[key] || 0) + r.quantity;
+    });
+    return map;
+  }
+
+  function mergeKeys(
+    harvestMap: Record<string, number>,
+    salesMap: Record<string, number>,
+    otherMap: Record<string, number>
+  ): BreakdownItem[] {
+    const keys = new Set([...Object.keys(harvestMap), ...Object.keys(salesMap), ...Object.keys(otherMap)]);
+    return Array.from(keys)
+      .map((k) => ({ key: k, harvest: harvestMap[k] || 0, sales: salesMap[k] || 0, other: otherMap[k] || 0 }))
+      .sort((a, b) => (b.harvest + b.sales) - (a.harvest + a.sales));
+  }
+
+  return {
+    byCrop: mergeKeys(
+      aggregate(harvestRes.data, (r) => r.crop_type ?? ''),
+      aggregate(salesRes.data, (r) => r.crop_type ?? ''),
+      aggregate(otherRes.data, (r) => r.crop_type ?? '')
+    ),
+    byVariety: mergeKeys(
+      aggregate(harvestRes.data, (r) => r.variety ?? ''),
+      aggregate(salesRes.data, (r) => r.variety ?? ''),
+      aggregate(otherRes.data, (r) => r.variety ?? '')
+    ),
+    bySize: mergeKeys(
+      aggregate(harvestRes.data, (r) => r.size ?? ''),
+      aggregate(salesRes.data, (r) => r.size ?? ''),
+      aggregate(otherRes.data, (r) => r.size ?? '')
+    ),
   };
 }

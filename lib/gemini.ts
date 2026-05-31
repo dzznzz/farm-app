@@ -49,6 +49,60 @@ export async function getDailyUsage(): Promise<{ count: number; limit: number; r
   return { count: usage.count, limit: DAILY_LIMIT, remaining: DAILY_LIMIT - usage.count };
 }
 
+const TIPS_CACHE_KEY = 'farm_tips_cache';
+
+const FALLBACK_TIPS = [
+  '수확 후 농산물은 빠른 냉각이 품질 유지의 핵심입니다. 수확 직후 예냉 처리로 신선도를 오래 유지하세요.',
+  '블루베리는 pH 4.5~5.0의 산성 토양에서 가장 잘 자랍니다. 정기적인 토양 검사로 최적의 생육 환경을 유지하세요.',
+  '수확 전 2~3일 관개를 중단하면 당도가 높아지고 품질이 향상됩니다. 적절한 수분 관리가 고품질 수확의 열쇠입니다.',
+];
+
+export async function generateFarmTips(): Promise<string[]> {
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const raw = await AsyncStorage.getItem(TIPS_CACHE_KEY);
+    if (raw) {
+      const cached: { date: string; tips: string[] } = JSON.parse(raw);
+      if (cached.date === today && Array.isArray(cached.tips) && cached.tips.length >= 3) {
+        return cached.tips;
+      }
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: '한국 농업 현장에서 실제로 유용한 오늘의 팁 3가지를 각각 2문장 이내로 작성해주세요. JSON 배열 형식으로만 응답하세요. 예시: ["팁1 내용.", "팁2 내용.", "팁3 내용."]',
+          },
+        ],
+        temperature: 0.8,
+        max_tokens: 400,
+      }),
+    });
+    if (!res.ok) throw new Error('api error');
+    const data = await res.json();
+    const content: string = data.choices?.[0]?.message?.content ?? '';
+    const match = content.match(/\[[\s\S]*?\]/);
+    if (match) {
+      const parsed: string[] = JSON.parse(match[0]);
+      if (Array.isArray(parsed) && parsed.length >= 3) {
+        const tips = parsed.slice(0, 3).map((t) => String(t));
+        await AsyncStorage.setItem(TIPS_CACHE_KEY, JSON.stringify({ date: today, tips }));
+        return tips;
+      }
+    }
+  } catch {}
+
+  return FALLBACK_TIPS;
+}
+
 export async function sendChatMessage(
   messages: ChatMessage[],
   userMessage: string

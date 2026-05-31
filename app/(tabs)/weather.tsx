@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
   TouchableOpacity, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import { fetchCurrentWeather, fetchWeatherByCity, getWeatherEmoji } from '../../lib/weather';
 import { Card } from '../../components/ui/Card';
 import { WeatherData } from '../../types';
@@ -29,12 +30,25 @@ function formatDay(unix: number) {
 
 export default function WeatherScreen() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [cityInput, setCityInput] = useState('');
   const [currentCity, setCurrentCity] = useState('');
   const [tab, setTab] = useState<'current' | 'monthly'>('current');
 
-  const loadWeather = async (city: string) => {
+  const loadByCoords = async (lat: number, lon: number, cityName?: string) => {
+    setLoading(true);
+    try {
+      const data = await fetchCurrentWeather(lat, lon);
+      const name = cityName ?? data.city ?? '현재 위치';
+      setWeather({ ...data, city: name });
+      setCurrentCity(name);
+    } catch (e: any) {
+      Alert.alert('오류', e.message);
+    }
+    setLoading(false);
+  };
+
+  const loadByCity = async (city: string) => {
     setLoading(true);
     try {
       const { lat, lon, name } = await fetchWeatherByCity(city);
@@ -47,11 +61,31 @@ export default function WeatherScreen() {
     setLoading(false);
   };
 
-  useEffect(() => { loadWeather('서울'); }, []);
+  // 앱 시작 시 현재 위치 자동 감지
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          await loadByCoords(loc.coords.latitude, loc.coords.longitude);
+        } else {
+          await loadByCity('서울');
+        }
+      } catch {
+        await loadByCity('서울');
+      }
+    })();
+  }, []);
+
+  const handleSearch = () => {
+    if (cityInput.trim()) loadByCity(cityInput.trim());
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient colors={['#7B6BA0', Colors.primary]} style={styles.header}>
+      {/* 검색바: 고정 영역 */}
+      <LinearGradient colors={['#7B6BA0', Colors.primary]} style={styles.searchHeader}>
         <Text style={styles.headerTitle}>날씨</Text>
         <View style={styles.searchRow}>
           <TextInput
@@ -61,51 +95,51 @@ export default function WeatherScreen() {
             placeholder="도시 검색 (예: 수원)"
             placeholderTextColor="rgba(255,255,255,0.6)"
             returnKeyType="search"
-            onSubmitEditing={() => { if (cityInput.trim()) loadWeather(cityInput.trim()); }}
+            onSubmitEditing={handleSearch}
           />
-          <TouchableOpacity
-            style={styles.searchBtn}
-            onPress={() => { if (cityInput.trim()) loadWeather(cityInput.trim()); }}
-          >
+          <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
             <Text style={styles.searchBtnText}>검색</Text>
           </TouchableOpacity>
         </View>
-
-        {weather && !loading && (
-          <View style={styles.mainWeather}>
-            <Text style={styles.cityName}>📍 {currentCity}</Text>
-            <Text style={styles.weatherIcon}>{getWeatherEmoji(weather.icon)}</Text>
-            <Text style={styles.temp}>{weather.temp}°</Text>
-            <Text style={styles.desc}>{weather.description}</Text>
-            <View style={styles.weatherMetaRow}>
-              <Text style={styles.weatherMeta}>체감 {weather.feels_like}°</Text>
-              <Text style={styles.weatherMetaDot}>·</Text>
-              <Text style={styles.weatherMeta}>습도 {weather.humidity}%</Text>
-              <Text style={styles.weatherMetaDot}>·</Text>
-              <Text style={styles.weatherMeta}>바람 {weather.wind_speed}km/h</Text>
-            </View>
-          </View>
-        )}
-
-        {loading && <ActivityIndicator color="#fff" style={{ marginVertical: 40 }} />}
-
-        <View style={styles.tabRow}>
-          {['current', 'monthly'].map((t) => (
-            <TouchableOpacity
-              key={t}
-              style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
-              onPress={() => setTab(t as any)}
-            >
-              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-                {t === 'current' ? '예보' : '월별 평균'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </LinearGradient>
 
-      <ScrollView style={styles.scroll}>
-        {tab === 'current' && weather && (
+      {/* 검색바 아래 전체 스크롤 */}
+      <ScrollView style={styles.scroll} bounces={false}>
+        <LinearGradient colors={[Colors.primary, Colors.primaryDark]} style={styles.weatherDisplay}>
+          {loading ? (
+            <ActivityIndicator color="#fff" style={{ marginVertical: 60 }} size="large" />
+          ) : weather ? (
+            <>
+              <Text style={styles.cityName}>📍 {currentCity}</Text>
+              <Text style={styles.weatherIcon}>{getWeatherEmoji(weather.icon)}</Text>
+              <Text style={styles.temp}>{weather.temp}°</Text>
+              <Text style={styles.desc}>{weather.description}</Text>
+              <View style={styles.weatherMetaRow}>
+                <Text style={styles.weatherMeta}>체감 {weather.feels_like}°</Text>
+                <Text style={styles.weatherMetaDot}>·</Text>
+                <Text style={styles.weatherMeta}>습도 {weather.humidity}%</Text>
+                <Text style={styles.weatherMetaDot}>·</Text>
+                <Text style={styles.weatherMeta}>바람 {weather.wind_speed}km/h</Text>
+              </View>
+            </>
+          ) : null}
+
+          <View style={styles.tabRow}>
+            {(['current', 'monthly'] as const).map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
+                onPress={() => setTab(t)}
+              >
+                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+                  {t === 'current' ? '예보' : '월별 평균'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </LinearGradient>
+
+        {tab === 'current' && weather && !loading && (
           <>
             <Text style={styles.sectionLabel}>시간별 예보</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hourlyScroll}>
@@ -143,22 +177,20 @@ export default function WeatherScreen() {
                 <View key={i} style={styles.monthlyRow}>
                   <Text style={styles.monthlyLabel}>{label}</Text>
                   <View style={styles.barTrack}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        {
-                          width: `${((MONTHLY_AVG[i] + 5) / 34) * 100}%`,
-                          backgroundColor: MONTHLY_AVG[i] > 20 ? Colors.warning : MONTHLY_AVG[i] > 10 ? Colors.primary : Colors.primaryLight,
-                        },
-                      ]}
-                    />
+                    <View style={[
+                      styles.barFill,
+                      {
+                        width: `${((MONTHLY_AVG[i] + 5) / 34) * 100}%`,
+                        backgroundColor: MONTHLY_AVG[i] > 20 ? Colors.warning : MONTHLY_AVG[i] > 10 ? Colors.primary : Colors.primaryLight,
+                      },
+                    ]} />
                   </View>
                   <Text style={styles.monthlyTemp}>{MONTHLY_AVG[i]}°C</Text>
                 </View>
               ))}
             </Card>
 
-            <Card style={[styles.monthlyCard, { marginTop: 0, marginBottom: Spacing.xl }]}>
+            <Card style={styles.monthlyCardBottom}>
               <Text style={[Typography.bodyBold, { marginBottom: Spacing.md }]}>농업 계절 가이드</Text>
               {[
                 { season: '봄 (3-5월)', tip: '파종 및 육묘 시기. 늦서리 주의.', emoji: '🌱' },
@@ -177,6 +209,8 @@ export default function WeatherScreen() {
             </Card>
           </>
         )}
+
+        <View style={{ height: Spacing.xl }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -184,54 +218,51 @@ export default function WeatherScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { paddingBottom: Spacing.md },
-  headerTitle: { color: '#fff', fontSize: 22, fontWeight: '800', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, marginBottom: Spacing.sm },
-  searchRow: {
-    flexDirection: 'row',
-    marginHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
+  // 고정 검색바
+  searchHeader: { paddingBottom: Spacing.md },
+  headerTitle: {
+    color: '#fff', fontSize: 22, fontWeight: '800',
+    paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, marginBottom: Spacing.sm,
   },
+  searchRow: { flexDirection: 'row', marginHorizontal: Spacing.lg, gap: Spacing.sm, marginBottom: Spacing.sm },
   searchInput: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: Radius.full,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    color: '#fff',
-    fontSize: 14,
+    flex: 1, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: Radius.full,
+    paddingHorizontal: 16, paddingVertical: 10, color: '#fff', fontSize: 14,
   },
   searchBtn: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: Radius.full,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: Radius.full,
+    paddingHorizontal: 16, paddingVertical: 10,
   },
   searchBtnText: { color: '#fff', fontWeight: '700' },
-  mainWeather: { alignItems: 'center', paddingVertical: Spacing.md },
+  // 스크롤 영역
+  scroll: { flex: 1 },
+  weatherDisplay: { alignItems: 'center', paddingVertical: Spacing.lg, paddingBottom: 0 },
   cityName: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
   weatherIcon: { fontSize: 72, marginVertical: 8 },
   temp: { fontSize: 64, fontWeight: '200', color: '#fff' },
   desc: { color: 'rgba(255,255,255,0.9)', fontSize: 16, marginTop: 4 },
-  weatherMetaRow: { flexDirection: 'row', marginTop: 8, gap: 6 },
+  weatherMetaRow: { flexDirection: 'row', marginTop: 8, gap: 6, marginBottom: Spacing.md },
   weatherMeta: { color: 'rgba(255,255,255,0.8)', fontSize: 13 },
   weatherMetaDot: { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
   tabRow: {
     flexDirection: 'row',
     marginHorizontal: Spacing.lg,
-    marginTop: Spacing.sm,
+    marginVertical: Spacing.md,
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: Radius.full,
     padding: 3,
+    alignSelf: 'stretch',
   },
   tabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: Radius.full },
   tabBtnActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
   tabText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
   tabTextActive: { color: '#fff' },
-  scroll: { flex: 1 },
   sectionLabel: { ...Typography.label, paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
   hourlyScroll: { paddingLeft: Spacing.lg },
-  hourlyCard: { alignItems: 'center', marginRight: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, minWidth: 72 },
+  hourlyCard: {
+    alignItems: 'center', marginRight: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, minWidth: 72,
+  },
   hourlyTime: { fontSize: 11, color: Colors.textSub, marginBottom: 6 },
   hourlyIcon: { fontSize: 22, marginBottom: 6 },
   hourlyTemp: { fontSize: 14, fontWeight: '700', color: Colors.text },
@@ -243,9 +274,13 @@ const styles = StyleSheet.create({
   dailyPop: { flex: 1, fontSize: 12, color: Colors.textSub },
   dailyTemp: { flex: 1.5, textAlign: 'right', fontSize: 14, fontWeight: '600' },
   monthlyCard: { marginHorizontal: Spacing.lg, marginBottom: Spacing.sm },
+  monthlyCardBottom: { marginHorizontal: Spacing.lg, marginTop: 0, marginBottom: Spacing.xl },
   monthlyRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
   monthlyLabel: { width: 36, fontSize: 13, color: Colors.textSub },
-  barTrack: { flex: 1, height: 8, backgroundColor: Colors.border, borderRadius: Radius.full, marginHorizontal: Spacing.sm, overflow: 'hidden' },
+  barTrack: {
+    flex: 1, height: 8, backgroundColor: Colors.border,
+    borderRadius: Radius.full, marginHorizontal: Spacing.sm, overflow: 'hidden',
+  },
   barFill: { height: '100%', borderRadius: Radius.full },
   monthlyTemp: { width: 40, textAlign: 'right', fontSize: 13, fontWeight: '600', color: Colors.text },
   seasonRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.sm, gap: Spacing.sm },
