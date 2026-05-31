@@ -55,7 +55,10 @@
         }
       ],
       "expo-web-browser",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      {
+        "iosUrlScheme": "임시텍스트" // 일단 빌드만 통과시키기 위해 아무 글자나 넣어두셔도 됩니다.
+      }
     ],
     "scheme": "dzznzz",
     "extra": {
