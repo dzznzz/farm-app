@@ -8,7 +8,8 @@
         "buildType": "apk"
       },
       "ios": {
-        "distribution": "internal"
+        "distribution": "internal",
+        "image": "macos-14-xcode-16.2"
       }
     },
     "production": {
@@ -16,7 +17,8 @@
         "buildType": "app-bundle"
       },
       "ios": {
-        "distribution": "store"
+        "distribution": "store",
+        "image": "macos-14-xcode-16.2"
       }
     }
   },
