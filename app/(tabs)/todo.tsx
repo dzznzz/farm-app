@@ -50,6 +50,10 @@ export default function TodoScreen() {
   const [newText, setNewText] = useState('');
   const [newTime, setNewTime] = useState('');
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [showEditTimePicker, setShowEditTimePicker] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
 
   const load = async (d: string) => {
@@ -97,6 +101,36 @@ export default function TodoScreen() {
     await supabase.from('todos').delete().eq('id', id);
     setTodos((prev) => prev.filter((t) => t.id !== id));
     showToast('삭제되었습니다.');
+  };
+
+  const handleStartEdit = (todo: Todo) => {
+    setEditingId(todo.id);
+    setEditText(todo.text);
+    setEditTime(todo.time ?? '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+    setEditTime('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editText.trim()) return;
+    const time = editTime.trim() || null;
+    const { error } = await supabase
+      .from('todos')
+      .update({ text: editText.trim(), time })
+      .eq('id', editingId);
+    if (!error) {
+      setTodos((prev) => sortByTime(prev.map((t) =>
+        t.id === editingId ? { ...t, text: editText.trim(), time } : t
+      )));
+      setEditingId(null);
+      setEditText('');
+      setEditTime('');
+      showToast('수정되었습니다.');
+    }
   };
 
   const handleClearCompleted = async () => {
@@ -149,25 +183,66 @@ export default function TodoScreen() {
             <Card style={styles.listCard}>
               {todos.map((todo, i) => (
                 <View key={todo.id} style={[styles.todoRow, i > 0 && styles.todoBorder]}>
-                  <TouchableOpacity
-                    style={styles.checkbox}
-                    onPress={() => handleToggle(todo.id, todo.completed)}
-                  >
-                    <View style={[styles.checkboxInner, todo.completed && styles.checkboxChecked]}>
-                      {todo.completed && <Text style={styles.checkmark}>✓</Text>}
+                  {editingId === todo.id ? (
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={styles.editInput}
+                        value={editText}
+                        onChangeText={setEditText}
+                        autoFocus
+                        returnKeyType="done"
+                      />
+                      <View style={styles.editActions}>
+                        <TouchableOpacity
+                          style={styles.editTimeBtn}
+                          onPress={() => setShowEditTimePicker(true)}
+                        >
+                          <Text style={[styles.editTimeBtnText, editTime ? styles.editTimeBtnActive : null]}>
+                            {editTime ? `🕐 ${editTime}` : '⏰ 시간'}
+                          </Text>
+                          {editTime ? (
+                            <TouchableOpacity
+                              onPress={() => setEditTime('')}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Text style={styles.editTimeClear}>✕</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.editSaveBtn} onPress={handleSaveEdit}>
+                          <Text style={styles.editSaveBtnText}>저장</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.editCancelBtn} onPress={handleCancelEdit}>
+                          <Text style={styles.editCancelBtnText}>취소</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </TouchableOpacity>
-                  <View style={styles.todoContent}>
-                    <Text style={[styles.todoText, todo.completed && styles.todoTextDone]}>
-                      {todo.text}
-                    </Text>
-                    {todo.time ? (
-                      <Text style={styles.todoTime}>🕐 {todo.time}</Text>
-                    ) : null}
-                  </View>
-                  <TouchableOpacity onPress={() => handleDelete(todo.id)} style={styles.deleteBtn}>
-                    <Text style={styles.deleteText}>삭제</Text>
-                  </TouchableOpacity>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={styles.checkbox}
+                        onPress={() => handleToggle(todo.id, todo.completed)}
+                      >
+                        <View style={[styles.checkboxInner, todo.completed && styles.checkboxChecked]}>
+                          {todo.completed ? <Text style={styles.checkmark}>✓</Text> : null}
+                        </View>
+                      </TouchableOpacity>
+                      <View style={styles.todoContent}>
+                        <Text style={[styles.todoText, todo.completed && styles.todoTextDone]}>
+                          {todo.text}
+                        </Text>
+                        {todo.time ? (
+                          <Text style={styles.todoTime}>🕐 {todo.time}</Text>
+                        ) : null}
+                      </View>
+                      <TouchableOpacity onPress={() => handleStartEdit(todo)} style={styles.editBtn}>
+                        <Text style={styles.editBtnText}>수정</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDelete(todo.id)} style={styles.deleteBtn}>
+                        <Text style={styles.deleteText}>삭제</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
               ))}
             </Card>
@@ -211,6 +286,12 @@ export default function TodoScreen() {
         value={newTime}
         onSelect={setNewTime}
         onClose={() => setShowTimePicker(false)}
+      />
+      <TimePickerModal
+        visible={showEditTimePicker}
+        value={editTime}
+        onSelect={setEditTime}
+        onClose={() => setShowEditTimePicker(false)}
       />
       <Toast message={toastMessage} visible={toastVisible} />
     </SafeAreaView>
@@ -269,12 +350,45 @@ const styles = StyleSheet.create({
   todoText: { ...Typography.body, color: Colors.text },
   todoTextDone: { color: Colors.textLight, textDecorationLine: 'line-through' },
   todoTime: { fontSize: 12, color: Colors.textSub, marginTop: 2 },
+  editBtn: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.primary,
+    marginLeft: 8,
+  },
+  editBtnText: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
   deleteBtn: {
     paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.danger,
     marginLeft: 8,
   },
   deleteText: { color: Colors.danger, fontSize: 12, fontWeight: '600' },
+  // Edit mode
+  editInput: {
+    backgroundColor: Colors.background, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.sm, paddingVertical: 8,
+    fontSize: 15, color: Colors.text, borderWidth: 1, borderColor: Colors.primary,
+    marginBottom: 6,
+  },
+  editActions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  editTimeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.background, borderRadius: Radius.md,
+    paddingHorizontal: 8, paddingVertical: 6,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  editTimeBtnText: { fontSize: 12, color: Colors.textLight },
+  editTimeBtnActive: { color: Colors.primary, fontWeight: '600' },
+  editTimeClear: { fontSize: 11, color: Colors.textSub },
+  editSaveBtn: {
+    backgroundColor: Colors.primary, borderRadius: Radius.full,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  editSaveBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  editCancelBtn: {
+    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  editCancelBtnText: { color: Colors.textSub, fontSize: 12, fontWeight: '600' },
   addBar: {
     flexDirection: 'row', gap: Spacing.sm,
     padding: Spacing.md, paddingBottom: Spacing.lg,

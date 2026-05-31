@@ -52,6 +52,7 @@ export default function InputScreen() {
   const [commissionRate, setCommissionRate] = useState('');
   const [commissionType, setCommissionType] = useState<'%' | '원'>('%');
   const [extraCost, setExtraCost] = useState('');
+  const [customSizeMode, setCustomSizeMode] = useState(false);
   const { tab: paramTab } = useLocalSearchParams<{ tab?: string }>();
 
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function InputScreen() {
   const resetForm = () => {
     setQuantity(''); setPricePerUnit(''); setBuyer(''); setNote('');
     setSize(''); setRecipient(''); setCommissionRate(''); setExtraCost('');
+    setCustomSizeMode(false);
   };
 
   const handleSave = async () => {
@@ -204,7 +206,7 @@ export default function InputScreen() {
   };
 
   const TABS: { key: TabType; label: string }[] = [
-    { key: 'harvest', label: '🌾 수확량' },
+    { key: 'harvest', label: '🫐 수확' },
     { key: 'sales', label: '💰 판매' },
     { key: 'other', label: '📋 기타' },
   ];
@@ -322,20 +324,29 @@ export default function InputScreen() {
                 {sizeOptions.map((s) => (
                   <TouchableOpacity
                     key={s}
-                    style={[styles.chip, size === s && styles.chipActive]}
-                    onPress={() => setSize(size === s ? '' : s)}
+                    style={[styles.chip, !customSizeMode && size === s && styles.chipActive]}
+                    onPress={() => { setCustomSizeMode(false); setSize(size === s ? '' : s); }}
                   >
-                    <Text style={[styles.chipText, size === s && styles.chipTextActive]}>{s}</Text>
+                    <Text style={[styles.chipText, !customSizeMode && size === s && styles.chipTextActive]}>{s}</Text>
                   </TouchableOpacity>
                 ))}
+                <TouchableOpacity
+                  style={[styles.chip, customSizeMode && styles.chipActive]}
+                  onPress={() => { setCustomSizeMode(true); setSize(''); }}
+                >
+                  <Text style={[styles.chipText, customSizeMode && styles.chipTextActive]}>직접 입력</Text>
+                </TouchableOpacity>
               </View>
-              <TextInput
-                style={[styles.input, { marginTop: 8 }]}
-                value={sizeOptions.includes(size) ? '' : size}
-                onChangeText={(v) => setSize(v)}
-                placeholder="직접 입력 (예: 왕왕왕, 점보)"
-                placeholderTextColor={Colors.textLight}
-              />
+              {customSizeMode && (
+                <TextInput
+                  style={[styles.input, { marginTop: 8 }]}
+                  value={size}
+                  onChangeText={setSize}
+                  placeholder="예: 왕왕왕, 점보"
+                  placeholderTextColor={Colors.textLight}
+                  autoFocus
+                />
+              )}
             </FormField>
 
             {/* 수량 */}
