@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Toast, useToast } from '../../components/ui/Toast';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { CalendarModal } from '../../components/modals/CalendarModal';
 import { SelectModal } from '../../components/modals/SelectModal';
@@ -52,6 +53,7 @@ export default function InputScreen() {
   const [expenseTypes, setExpenseTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const { toastMessage, toastVisible, showToast } = useToast();
   const [showVarietySelect, setShowVarietySelect] = useState(false);
   const [showSizeInfo, setShowSizeInfo] = useState(false);
 
@@ -150,8 +152,8 @@ export default function InputScreen() {
 
     if (tab === 'harvest') {
       const { error } = await supabase.from('harvest_records').insert({ ...baseFields, note: note || null });
-      if (error) Alert.alert('저장 실패', error.message);
-      else { Alert.alert('저장 완료', '수확량이 기록되었습니다.'); resetForm(); }
+      if (error) showToast(`저장 실패: ${error.message}`);
+      else { showToast('저장되었습니다.'); resetForm(); }
 
     } else if (tab === 'sales') {
       const price = parseFloat(pricePerUnit);
@@ -175,8 +177,8 @@ export default function InputScreen() {
         commission_amount: cAmount,
         extra_cost: eCost,
       });
-      if (error) Alert.alert('저장 실패', error.message);
-      else { Alert.alert('저장 완료', '판매 기록이 저장되었습니다.'); resetForm(); }
+      if (error) showToast(`저장 실패: ${error.message}`);
+      else { showToast('저장되었습니다.'); resetForm(); }
 
     } else {
       const { error } = await supabase.from('other_records').insert({
@@ -185,8 +187,8 @@ export default function InputScreen() {
         recipient: otherType === 'gift' ? (recipient || null) : null,
         note: note || null,
       });
-      if (error) Alert.alert('저장 실패', error.message);
-      else { Alert.alert('저장 완료', `${otherType === 'gift' ? '나눔' : '폐기'} 기록이 저장되었습니다.`); resetForm(); }
+      if (error) showToast(`저장 실패: ${error.message}`);
+      else { showToast('저장되었습니다.'); resetForm(); }
     }
     setLoading(false);
   };
@@ -501,6 +503,7 @@ export default function InputScreen() {
         onClose={() => setShowSizeInfo(false)}
         sizes={sizeInfoData}
       />
+      <Toast message={toastMessage} visible={toastVisible} />
     </SafeAreaView>
   );
 }

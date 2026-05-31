@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, KeyboardAvoidingView, Platform, Alert,
+  TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,11 +9,13 @@ import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
+import { Toast, useToast } from '../../components/ui/Toast';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 interface Todo {
   id: string;
   date: string;
+  time: string | null;
   text: string;
   completed: boolean;
 }
@@ -30,12 +32,23 @@ function addDays(dateStr: string, delta: number) {
   return d.toISOString().split('T')[0];
 }
 
+function sortByTime(todos: Todo[]) {
+  return [...todos].sort((a, b) => {
+    if (!a.time && !b.time) return 0;
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return a.time.localeCompare(b.time);
+  });
+}
+
 export default function TodoScreen() {
   const { user } = useAuth();
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newText, setNewText] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const { toastMessage, toastVisible, showToast } = useToast();
 
   const load = async (d: string) => {
     if (!user) return;
@@ -45,7 +58,7 @@ export default function TodoScreen() {
       .eq('user_id', user.id)
       .eq('date', d)
       .order('created_at');
-    setTodos(data ?? []);
+    setTodos(sortByTime(data ?? []));
   };
 
   useFocusEffect(useCallback(() => { load(date); }, [date, user]));
@@ -59,14 +72,17 @@ export default function TodoScreen() {
   const handleAdd = async () => {
     const text = newText.trim();
     if (!text || !user) return;
+    const time = newTime.trim() || null;
     const { data, error } = await supabase
       .from('todos')
-      .insert({ user_id: user.id, date, text, completed: false })
+      .insert({ user_id: user.id, date, text, time, completed: false })
       .select()
       .single();
     if (!error && data) {
-      setTodos((prev) => [...prev, data]);
+      setTodos((prev) => sortByTime([...prev, data]));
       setNewText('');
+      setNewTime('');
+      showToast('저장되었습니다.');
     }
   };
 
@@ -75,16 +91,18 @@ export default function TodoScreen() {
     setTodos((prev) => prev.map((t) => t.id === id ? { ...t, completed: !t.completed } : t));
   };
 
-  const handleDelete = (id: string) => {
-    Alert.alert('삭제', '이 항목을 삭제할까요?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제', style: 'destructive', onPress: async () => {
-          await supabase.from('todos').delete().eq('id', id);
-          setTodos((prev) => prev.filter((t) => t.id !== id));
-        },
-      },
-    ]);
+  const handleDelete = async (id: string) => {
+    await supabase.from('todos').delete().eq('id', id);
+    setTodos((prev) => prev.filter((t) => t.id !== id));
+    showToast('삭제되었습니다.');
+  };
+
+  const handleClearCompleted = async () => {
+    const completedIds = todos.filter((t) => t.completed).map((t) => t.id);
+    if (!completedIds.length) return;
+    await supabase.from('todos').delete().in('id', completedIds);
+    setTodos((prev) => prev.filter((t) => !t.completed));
+    showToast(`${completedIds.length}개 삭제되었습니다.`);
   };
 
   const doneCount = todos.filter((t) => t.completed).length;
@@ -97,7 +115,7 @@ export default function TodoScreen() {
           <TouchableOpacity style={styles.navBtn} onPress={() => handleDateChange(-1)}>
             <Text style={styles.navArrow}>‹</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDate(today)} style={styles.dateLabel}>
+          <TouchableOpacity onPress={() => { setDate(today); load(today); }} style={styles.dateLabel}>
             <Text style={styles.dateText}>{formatDisplayDate(date)}</Text>
             {date === today && <Text style={styles.todayBadge}>오늘</Text>}
           </TouchableOpacity>
@@ -106,9 +124,14 @@ export default function TodoScreen() {
           </TouchableOpacity>
         </View>
         {todos.length > 0 && (
-          <Text style={styles.progressText}>
-            {doneCount}/{todos.length} 완료
-          </Text>
+          <View style={styles.progressRow}>
+            <Text style={styles.progressText}>{doneCount}/{todos.length} 완료</Text>
+            {doneCount > 0 && (
+              <TouchableOpacity onPress={handleClearCompleted} style={styles.clearBtn}>
+                <Text style={styles.clearBtnText}>완료 항목 삭제</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </LinearGradient>
 
@@ -132,11 +155,16 @@ export default function TodoScreen() {
                       {todo.completed && <Text style={styles.checkmark}>✓</Text>}
                     </View>
                   </TouchableOpacity>
-                  <Text style={[styles.todoText, todo.completed && styles.todoTextDone]}>
-                    {todo.text}
-                  </Text>
+                  <View style={styles.todoContent}>
+                    <Text style={[styles.todoText, todo.completed && styles.todoTextDone]}>
+                      {todo.text}
+                    </Text>
+                    {todo.time ? (
+                      <Text style={styles.todoTime}>🕐 {todo.time}</Text>
+                    ) : null}
+                  </View>
                   <TouchableOpacity onPress={() => handleDelete(todo.id)} style={styles.deleteBtn}>
-                    <Text style={styles.deleteText}>✕</Text>
+                    <Text style={styles.deleteText}>삭제</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -145,15 +173,26 @@ export default function TodoScreen() {
         </ScrollView>
 
         <View style={styles.addBar}>
-          <TextInput
-            style={styles.addInput}
-            placeholder="할 일 추가..."
-            placeholderTextColor={Colors.textLight}
-            value={newText}
-            onChangeText={setNewText}
-            onSubmitEditing={handleAdd}
-            returnKeyType="done"
-          />
+          <View style={styles.addInputGroup}>
+            <TextInput
+              style={styles.addInput}
+              placeholder="할 일 추가..."
+              placeholderTextColor={Colors.textLight}
+              value={newText}
+              onChangeText={setNewText}
+              onSubmitEditing={handleAdd}
+              returnKeyType="done"
+            />
+            <TextInput
+              style={styles.addTimeInput}
+              placeholder="시간 (예: 14:30)"
+              placeholderTextColor={Colors.textLight}
+              value={newTime}
+              onChangeText={setNewTime}
+              keyboardType="numbers-and-punctuation"
+              maxLength={5}
+            />
+          </View>
           <TouchableOpacity
             style={[styles.addBtn, !newText.trim() && styles.addBtnDisabled]}
             onPress={handleAdd}
@@ -163,6 +202,8 @@ export default function TodoScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Toast message={toastMessage} visible={toastVisible} />
     </SafeAreaView>
   );
 }
@@ -186,10 +227,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryUltraLight, paddingHorizontal: 8, paddingVertical: 2,
     borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.primaryLight,
   },
-  progressText: {
-    ...Typography.caption, textAlign: 'center', color: Colors.primary,
-    fontWeight: '700', marginTop: Spacing.sm,
+  progressRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg, marginTop: Spacing.sm,
   },
+  progressText: { ...Typography.caption, color: Colors.primary, fontWeight: '700' },
+  clearBtn: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.danger,
+  },
+  clearBtnText: { fontSize: 12, color: Colors.danger, fontWeight: '600' },
   scroll: { flex: 1 },
   empty: { alignItems: 'center', marginTop: 80 },
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
@@ -198,7 +245,7 @@ const styles = StyleSheet.create({
   listCard: { margin: Spacing.lg, padding: 0, overflow: 'hidden' },
   todoRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingVertical: 14,
+    paddingHorizontal: Spacing.md, paddingVertical: 12,
   },
   todoBorder: { borderTopWidth: 1, borderTopColor: Colors.border },
   checkbox: { marginRight: 12 },
@@ -209,20 +256,33 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   checkmark: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  todoText: { flex: 1, ...Typography.body, color: Colors.text },
+  todoContent: { flex: 1 },
+  todoText: { ...Typography.body, color: Colors.text },
   todoTextDone: { color: Colors.textLight, textDecorationLine: 'line-through' },
-  deleteBtn: { padding: 6 },
-  deleteText: { color: Colors.textLight, fontSize: 14 },
+  todoTime: { fontSize: 12, color: Colors.textSub, marginTop: 2 },
+  deleteBtn: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.danger,
+    marginLeft: 8,
+  },
+  deleteText: { color: Colors.danger, fontSize: 12, fontWeight: '600' },
   addBar: {
     flexDirection: 'row', gap: Spacing.sm,
     padding: Spacing.md, paddingBottom: Spacing.lg,
     backgroundColor: Colors.surface,
     borderTopWidth: 1, borderTopColor: Colors.border,
   },
+  addInputGroup: { flex: 1, gap: 6 },
   addInput: {
-    flex: 1, backgroundColor: Colors.background,
+    backgroundColor: Colors.background,
     borderRadius: Radius.md, paddingHorizontal: Spacing.md,
-    paddingVertical: 12, fontSize: 15, color: Colors.text,
+    paddingVertical: 11, fontSize: 15, color: Colors.text,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  addTimeInput: {
+    backgroundColor: Colors.background,
+    borderRadius: Radius.md, paddingHorizontal: Spacing.md,
+    paddingVertical: 9, fontSize: 13, color: Colors.text,
     borderWidth: 1, borderColor: Colors.border,
   },
   addBtn: {
