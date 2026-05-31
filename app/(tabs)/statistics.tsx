@@ -196,8 +196,6 @@ export default function StatisticsScreen() {
               xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
               noOfSections={4}
               maxValue={Math.max(...chartData.map((d) => d.value), 1) * 1.2}
-              gradientColor={Colors.primaryLight}
-              isAnimated
             />
           ) : (
             <View style={styles.emptyChart}>

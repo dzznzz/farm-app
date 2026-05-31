@@ -49,16 +49,24 @@ export function ContactsPage({ onBack, userId }: Props) {
     if (status !== 'granted') { Alert.alert('권한 필요', '연락처 권한을 허용해주세요.'); return; }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = await Contacts.getContactsAsync({
-      fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+      fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.FirstName, Contacts.Fields.LastName],
     } as any);
-    const validContacts: any[] = (result.data ?? []).filter((c: any) => c.name);
+    const validContacts: any[] = (result.data ?? []).map((c: any) => ({
+      ...c,
+      resolvedName: c.name || [c.firstName, c.lastName].filter(Boolean).join(' ').trim(),
+    })).filter((c: any) => c.resolvedName);
+    if (validContacts.length === 0) {
+      Alert.alert('연락처 없음', '가져올 수 있는 연락처가 없습니다.\niOS 설정에서 연락처 접근 권한을 확인해주세요.');
+      return;
+    }
     Alert.alert('연락처 가져오기', `기기에서 ${validContacts.length}개의 연락처를 찾았습니다.\n모두 가져올까요?`, [
       { text: '취소', style: 'cancel' },
       {
         text: '가져오기',
         onPress: async () => {
+          const baseOrder = contacts.length;
           const rows = validContacts.map((c, i) => ({
-            user_id: userId, name: c.name!, phone: c.phoneNumbers?.[0]?.number ?? null, sort_order: i,
+            user_id: userId, name: c.resolvedName, phone: c.phoneNumbers?.[0]?.number ?? null, sort_order: baseOrder + i,
           }));
           const { error } = await supabase.from('contacts').insert(rows);
           if (error) Alert.alert('오류', error.message);

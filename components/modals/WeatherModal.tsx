@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, TextInput, Alert, ActivityIndicator, StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { fetchCurrentWeather, fetchWeatherByCity, getWeatherEmoji } from '../../lib/weather';
@@ -36,6 +36,7 @@ interface Props {
 }
 
 export function WeatherModal({ visible, onClose, initialWeather, initialCity }: Props) {
+  const insets = useSafeAreaInsets();
   const [weather, setWeather] = useState<WeatherData | null>(initialWeather ?? null);
   const [loading, setLoading] = useState(!initialWeather);
   const [cityInput, setCityInput] = useState('');
@@ -93,8 +94,8 @@ export function WeatherModal({ visible, onClose, initialWeather, initialCity }: 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <StatusBar barStyle="light-content" />
-      <SafeAreaView style={styles.container}>
-        <LinearGradient colors={['#7B6BA0', Colors.primary]} style={styles.searchHeader}>
+      <View style={styles.container}>
+        <LinearGradient colors={['#7B6BA0', Colors.primary]} style={[styles.searchHeader, { paddingTop: insets.top }]}>
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>날씨</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -223,9 +224,9 @@ export function WeatherModal({ visible, onClose, initialWeather, initialCity }: 
             </>
           )}
 
-          <View style={{ height: Spacing.xl }} />
+          <View style={{ height: Spacing.xl + insets.bottom }} />
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
