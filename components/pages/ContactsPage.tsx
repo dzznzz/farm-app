@@ -46,7 +46,8 @@ export function ContactsPage({ onBack, userId }: Props) {
   const importFromDevice = async () => {
     if (!isMobile) { Alert.alert('안내', '휴대폰에서만 사용 가능한 기능입니다.'); return; }
     const { status } = await Contacts.requestPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('권한 필요', '연락처 권한을 허용해주세요.'); return; }
+    // iOS 14+에서 "일부 허용" 선택 시 status가 'limited'로 반환됨
+    if (status !== 'granted' && status !== 'limited') { Alert.alert('권한 필요', '연락처 권한을 허용해주세요.'); return; }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = await Contacts.getContactsAsync({
       fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.FirstName, Contacts.Fields.LastName],

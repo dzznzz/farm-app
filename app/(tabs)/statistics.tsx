@@ -268,7 +268,7 @@ export default function StatisticsScreen() {
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
 
-      {user && (
+      {user && showBreakdown && (
         <BreakdownModal
           visible={showBreakdown}
           onClose={() => setShowBreakdown(false)}
@@ -277,7 +277,7 @@ export default function StatisticsScreen() {
           to={breakdownTo}
         />
       )}
-      {user && (
+      {user && showExport && (
         <ExportModal
           visible={showExport}
           onClose={() => setShowExport(false)}
