@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.dzznzz.farm",
+      "bundleIdentifier": "com.dznz.farm",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "수확 동선 추적을 위해 위치 접근이 필요합니다.",
         "NSLocationAlwaysUsageDescription": "백그라운드 수확 동선 추적을 위해 위치 접근이 필요합니다.",
