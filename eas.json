@@ -11,7 +11,7 @@
         "distribution": "internal",
         "image": "macos-sonoma-14.6-xcode-16.1",
         "env": {
-          "NODE_VERSION": "20.19.4"
+          "EAS_BUILD_NODE_VERSION": "20.19.4"
         }
       }
     },
@@ -23,7 +23,7 @@
         "distribution": "store",
         "image": "macos-sonoma-14.6-xcode-16.1",
         "env": {
-          "NODE_VERSION": "20.19.4"
+          "EAS_BUILD_NODE_VERSION": "20.19.4"
         }
       }
     }
