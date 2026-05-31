@@ -10,7 +10,7 @@
       "ios": {
         "distribution": "internal",
         "image": "macos-sequoia-15.3-xcode-16.2",
-        "node": "20.19.4"
+        "node": "22.13.0"
       }
     },
     "production": {
@@ -20,7 +20,7 @@
       "ios": {
         "distribution": "store",
         "image": "macos-sequoia-15.3-xcode-16.2",
-        "node": "20.19.4"
+        "node": "22.13.0"
       }
     }
   },
