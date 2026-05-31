@@ -53,7 +53,8 @@
         {
           "contactsPermission": "판매 거래처 연락처 관리를 위해 연락처 접근이 필요합니다."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "scheme": "dzznzz",
     "extra": {

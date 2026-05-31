@@ -47,6 +47,9 @@ export default function InputScreen() {
   const [note, setNote] = useState('');
   const [otherType, setOtherType] = useState<OtherType>('gift');
   const [recipient, setRecipient] = useState('');
+  const [commissionRate, setCommissionRate] = useState('');
+  const [extraCost, setExtraCost] = useState('');
+  const [expenseTypes, setExpenseTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showVarietySelect, setShowVarietySelect] = useState(false);
@@ -56,6 +59,9 @@ export default function InputScreen() {
   useEffect(() => {
     supabase.from('harvest_units').select('name').order('sort_order').then(({ data }) => {
       if (data?.length) setUnitOptions(data.map((u) => u.name));
+    });
+    supabase.from('expense_types').select('name').order('sort_order').then(({ data }) => {
+      if (data?.length) setExpenseTypes(data.map((e: any) => e.name));
     });
   }, []);
 
@@ -117,7 +123,7 @@ export default function InputScreen() {
 
   const resetForm = () => {
     setQuantity(''); setPricePerUnit(''); setBuyer(''); setNote('');
-    setSize(''); setRecipient('');
+    setSize(''); setRecipient(''); setCommissionRate(''); setExtraCost('');
   };
 
   const handleSave = async () => {
@@ -154,13 +160,20 @@ export default function InputScreen() {
         setLoading(false);
         return;
       }
+      const totalRevenue = parseFloat(quantity) * price;
+      const cRate = parseFloat(commissionRate || '0') || 0;
+      const cAmount = totalRevenue * cRate / 100;
+      const eCost = parseFloat(extraCost || '0') || 0;
       // unit column excluded until supabase_migration_003.sql is applied
       const { unit: _unit, ...salesBase } = baseFields;
       const { error } = await supabase.from('sales_records').insert({
         ...salesBase,
         price_per_unit: price,
-        total_revenue: parseFloat(quantity) * price,
+        total_revenue: totalRevenue,
         buyer: buyer || null,
+        commission_rate: cRate,
+        commission_amount: cAmount,
+        extra_cost: eCost,
       });
       if (error) Alert.alert('저장 실패', error.message);
       else { Alert.alert('저장 완료', '판매 기록이 저장되었습니다.'); resetForm(); }
@@ -359,14 +372,75 @@ export default function InputScreen() {
                   />
                 </FormField>
 
-                {quantity && pricePerUnit ? (
-                  <View style={styles.totalBox}>
-                    <Text style={styles.totalLabel}>총 매출액</Text>
-                    <Text style={styles.totalValue}>
-                      {(parseFloat(quantity || '0') * parseFloat(pricePerUnit || '0')).toLocaleString()}원
-                    </Text>
+                <FormField label="수수료 (%)">
+                  <TextInput
+                    style={styles.input}
+                    value={commissionRate}
+                    onChangeText={setCommissionRate}
+                    placeholder="0 (없으면 비워두세요)"
+                    placeholderTextColor={Colors.textLight}
+                    keyboardType="decimal-pad"
+                  />
+                </FormField>
+
+                <FormField label="부수비용 (원)">
+                  <View style={styles.chipRow}>
+                    {expenseTypes.map((et) => (
+                      <TouchableOpacity
+                        key={et}
+                        style={styles.chip}
+                        onPress={() => {}}
+                      >
+                        <Text style={styles.chipText}>{et}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                ) : null}
+                  <TextInput
+                    style={[styles.input, { marginTop: expenseTypes.length ? 8 : 0 }]}
+                    value={extraCost}
+                    onChangeText={setExtraCost}
+                    placeholder="0 (택배비, 포장비 등 합계)"
+                    placeholderTextColor={Colors.textLight}
+                    keyboardType="decimal-pad"
+                  />
+                </FormField>
+
+                {quantity && pricePerUnit ? (() => {
+                  const rev = parseFloat(quantity || '0') * parseFloat(pricePerUnit || '0');
+                  const cAmt = rev * (parseFloat(commissionRate || '0') || 0) / 100;
+                  const eCost = parseFloat(extraCost || '0') || 0;
+                  const net = rev - cAmt - eCost;
+                  return (
+                    <View style={styles.totalBox}>
+                      <View style={styles.totalRow}>
+                        <Text style={styles.totalLabel}>총 매출액</Text>
+                        <Text style={styles.totalValue}>{rev.toLocaleString()}원</Text>
+                      </View>
+                      {(cAmt > 0 || eCost > 0) && (
+                        <>
+                          {cAmt > 0 && (
+                            <View style={styles.totalRow}>
+                              <Text style={styles.deductLabel}>수수료 ({commissionRate}%)</Text>
+                              <Text style={styles.deductValue}>-{Math.round(cAmt).toLocaleString()}원</Text>
+                            </View>
+                          )}
+                          {eCost > 0 && (
+                            <View style={styles.totalRow}>
+                              <Text style={styles.deductLabel}>부수비용</Text>
+                              <Text style={styles.deductValue}>-{eCost.toLocaleString()}원</Text>
+                            </View>
+                          )}
+                          <View style={[styles.totalRow, styles.netRow]}>
+                            <Text style={styles.netLabel}>순수익</Text>
+                            <Text style={[styles.totalValue, { color: net >= 0 ? Colors.success : Colors.danger }]}>
+                              {Math.round(net).toLocaleString()}원
+                            </Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  );
+                })() : null}
 
                 <FormField label="구매자 (선택)">
                   <TextInput
@@ -506,8 +580,13 @@ const styles = StyleSheet.create({
   hintText: { ...Typography.caption, marginTop: 6, color: Colors.textSub },
   totalBox: {
     backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
-    padding: Spacing.md, marginBottom: Spacing.md, alignItems: 'center',
+    padding: Spacing.md, marginBottom: Spacing.md,
   },
   totalLabel: { ...Typography.caption },
-  totalValue: { fontSize: 24, fontWeight: '800', color: Colors.primaryDark, marginTop: 4 },
+  totalValue: { fontSize: 22, fontWeight: '800', color: Colors.primaryDark },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  deductLabel: { ...Typography.caption, color: Colors.textSub },
+  deductValue: { ...Typography.caption, color: Colors.danger, fontWeight: '600' },
+  netRow: { borderTopWidth: 1, borderTopColor: Colors.primaryLight, marginTop: 6, paddingTop: 6 },
+  netLabel: { ...Typography.bodyBold, color: Colors.text },
 });

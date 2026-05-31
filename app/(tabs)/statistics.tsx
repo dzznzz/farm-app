@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
 import { BreakdownModal } from '../../components/modals/BreakdownModal';
+import { ExportModal } from '../../components/modals/ExportModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { PeriodType, DailyStat } from '../../types';
 
@@ -68,6 +69,7 @@ export default function StatisticsScreen() {
   const [wasteTotal, setWasteTotal] = useState(0);
   const [wasteLoading, setWasteLoading] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   useEffect(() => { fetchStats(period); }, [period, user?.id]);
 
@@ -257,6 +259,11 @@ export default function StatisticsScreen() {
           <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={[styles.breakdownBtn, { marginTop: Spacing.sm }]} onPress={() => setShowExport(true)}>
+          <Text style={styles.breakdownBtnText}>📥 Google Sheets로 월간 데이터 내보내기</Text>
+          <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
+        </TouchableOpacity>
+
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
 
@@ -267,6 +274,13 @@ export default function StatisticsScreen() {
           userId={user.id}
           from={breakdownFrom}
           to={breakdownTo}
+        />
+      )}
+      {user && (
+        <ExportModal
+          visible={showExport}
+          onClose={() => setShowExport(false)}
+          userId={user.id}
         />
       )}
     </SafeAreaView>

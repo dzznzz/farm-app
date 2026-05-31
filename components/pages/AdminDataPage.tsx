@@ -6,11 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { pageStyles } from './shared';
 
-type AdminTab = 'crop' | 'variety' | 'size' | 'unit';
+type AdminTab = 'crop' | 'variety' | 'size' | 'unit' | 'expense';
 
 interface CropType { id: string; name: string; sort_order: number }
 interface VarietyItem { id: string; crop_type: string; name: string }
@@ -29,6 +28,7 @@ export function AdminDataPage({ onBack }: Props) {
     { key: 'variety', label: '품종' },
     { key: 'size', label: '사이즈' },
     { key: 'unit', label: '단위' },
+    { key: 'expense', label: '비용' },
   ];
 
   return (
@@ -39,7 +39,7 @@ export function AdminDataPage({ onBack }: Props) {
         <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.tabs}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
         {TABS.map((t) => (
           <TouchableOpacity
             key={t.key}
@@ -49,12 +49,13 @@ export function AdminDataPage({ onBack }: Props) {
             <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       {tab === 'crop' && <CropTab />}
       {tab === 'variety' && <VarietyTab />}
       {tab === 'size' && <SizeTab />}
       {tab === 'unit' && <UnitTab />}
+      {tab === 'expense' && <ExpenseTab />}
     </SafeAreaView>
   );
 }
@@ -401,12 +402,86 @@ function UnitTab() {
   );
 }
 
+// ── 비용항목 탭 ──────────────────────────────────────────────────────────────
+interface ExpenseItem { id: string; name: string; sort_order: number }
+
+function ExpenseTab() {
+  const [items, setItems] = useState<ExpenseItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    const { data } = await supabase.from('expense_types').select('id, name, sort_order').order('sort_order');
+    setItems(data ?? []);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const add = async () => {
+    if (!newName.trim()) { Alert.alert('입력 오류', '비용 항목 이름을 입력하세요.'); return; }
+    setSaving(true);
+    const { error } = await supabase.from('expense_types').insert({ name: newName.trim(), sort_order: items.length });
+    if (error) Alert.alert('저장 실패', error.message);
+    else { setNewName(''); await load(); }
+    setSaving(false);
+  };
+
+  const remove = (id: string, name: string) => {
+    Alert.alert('삭제', `'${name}' 항목을 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: async () => { await supabase.from('expense_types').delete().eq('id', id); setItems((p) => p.filter((x) => x.id !== id)); } },
+    ]);
+  };
+
+  return (
+    <ScrollView style={pageStyles.scroll} keyboardShouldPersistTaps="handled">
+      <Card style={styles.addCard}>
+        <Text style={[Typography.bodyBold, { marginBottom: Spacing.sm }]}>비용 항목 추가</Text>
+        <Text style={[Typography.caption, { marginBottom: Spacing.sm, color: Colors.textSub }]}>
+          판매 입력 시 부수비용 분류에 사용됩니다
+        </Text>
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.addInput}
+            value={newName}
+            onChangeText={setNewName}
+            placeholder="예) 택배비, 포장비, 인건비"
+            placeholderTextColor={Colors.textLight}
+          />
+          <TouchableOpacity style={styles.addBtn} onPress={add} disabled={saving}>
+            <Text style={styles.addBtnText}>{saving ? '...' : '추가'}</Text>
+          </TouchableOpacity>
+        </View>
+      </Card>
+
+      {loading ? (
+        <ActivityIndicator color={Colors.primary} style={{ marginTop: 20 }} />
+      ) : (
+        items.map((item) => (
+          <Card key={item.id} style={styles.itemCard}>
+            <View style={styles.itemRow}>
+              <Text style={Typography.bodyBold}>{item.name}</Text>
+              <TouchableOpacity onPress={() => remove(item.id, item.name)} style={styles.deleteBtn}>
+                <Text style={styles.deleteBtnText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          </Card>
+        ))
+      )}
+      <View style={{ height: Spacing.xl }} />
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
+  tabsScroll: { margin: Spacing.lg, marginBottom: 0 },
   tabs: {
-    flexDirection: 'row', backgroundColor: Colors.border, margin: Spacing.lg,
-    marginBottom: 0, borderRadius: Radius.full, padding: 3,
+    flexDirection: 'row', backgroundColor: Colors.border,
+    borderRadius: Radius.full, padding: 3,
   },
-  tabBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: Radius.full },
+  tabBtn: { paddingVertical: 9, paddingHorizontal: 18, alignItems: 'center', borderRadius: Radius.full },
   tabBtnActive: { backgroundColor: Colors.surface },
   tabText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
   tabTextActive: { color: Colors.primary },
