@@ -9,7 +9,7 @@
       },
       "ios": {
         "distribution": "internal",
-        "image": "macos-sonoma-14.6-xcode-16.0"
+        "image": "macos-sonoma-14.6-xcode-16.1"
       }
     },
     "production": {
