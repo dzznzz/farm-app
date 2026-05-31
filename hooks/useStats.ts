@@ -37,7 +37,7 @@ export function useStats(userId: string | undefined) {
         .order('date'),
       supabase
         .from('sales_records')
-        .select('date, quantity, total_revenue')
+        .select('date, quantity, total_revenue, commission_amount, extra_cost')
         .eq('user_id', userId)
         .gte('date', from)
         .lte('date', to)
@@ -47,14 +47,15 @@ export function useStats(userId: string | undefined) {
     const map: Record<string, DailyStat> = {};
 
     harvestRes.data?.forEach((r) => {
-      if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0 };
+      if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 };
       map[r.date].harvest += r.quantity;
     });
 
     salesRes.data?.forEach((r) => {
-      if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0 };
+      if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 };
       map[r.date].sales += r.quantity;
       map[r.date].revenue += r.total_revenue;
+      map[r.date].netRevenue += r.total_revenue - (r.commission_amount ?? 0) - (r.extra_cost ?? 0);
     });
 
     setStats(Object.values(map).sort((a, b) => a.date.localeCompare(b.date)));

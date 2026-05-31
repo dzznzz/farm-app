@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../../components/ui/Button';
@@ -49,7 +50,15 @@ export default function InputScreen() {
   const [otherType, setOtherType] = useState<OtherType>('gift');
   const [recipient, setRecipient] = useState('');
   const [commissionRate, setCommissionRate] = useState('');
+  const [commissionType, setCommissionType] = useState<'%' | '원'>('%');
   const [extraCost, setExtraCost] = useState('');
+  const { tab: paramTab } = useLocalSearchParams<{ tab?: string }>();
+
+  useEffect(() => {
+    if (paramTab === 'harvest' || paramTab === 'sales' || paramTab === 'other') {
+      setTab(paramTab as TabType);
+    }
+  }, [paramTab]);
   const [expenseTypes, setExpenseTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -163,8 +172,9 @@ export default function InputScreen() {
         return;
       }
       const totalRevenue = parseFloat(quantity) * price;
-      const cRate = parseFloat(commissionRate || '0') || 0;
-      const cAmount = totalRevenue * cRate / 100;
+      const commissionInput = parseFloat(commissionRate || '0') || 0;
+      const cAmount = commissionType === '%' ? totalRevenue * commissionInput / 100 : commissionInput;
+      const cRate = commissionType === '%' ? commissionInput : 0;
       const eCost = parseFloat(extraCost || '0') || 0;
       // unit column excluded until supabase_migration_003.sql is applied
       const { unit: _unit, ...salesBase } = baseFields;
@@ -374,12 +384,25 @@ export default function InputScreen() {
                   />
                 </FormField>
 
-                <FormField label="수수료 (%)">
+                <FormField label="수수료">
+                  <View style={styles.chipRow}>
+                    {(['%', '원'] as const).map((t) => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[styles.chip, commissionType === t && styles.chipActive]}
+                        onPress={() => setCommissionType(t)}
+                      >
+                        <Text style={[styles.chipText, commissionType === t && styles.chipTextActive]}>
+                          {t === '%' ? '비율 (%)' : '금액 (원)'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { marginTop: 8 }]}
                     value={commissionRate}
                     onChangeText={setCommissionRate}
-                    placeholder="0 (없으면 비워두세요)"
+                    placeholder={commissionType === '%' ? '0 (없으면 비워두세요)' : '0원 (없으면 비워두세요)'}
                     placeholderTextColor={Colors.textLight}
                     keyboardType="decimal-pad"
                   />
@@ -409,9 +432,13 @@ export default function InputScreen() {
 
                 {quantity && pricePerUnit ? (() => {
                   const rev = parseFloat(quantity || '0') * parseFloat(pricePerUnit || '0');
-                  const cAmt = rev * (parseFloat(commissionRate || '0') || 0) / 100;
+                  const commissionInput = parseFloat(commissionRate || '0') || 0;
+                  const cAmt = commissionType === '%' ? rev * commissionInput / 100 : commissionInput;
                   const eCost = parseFloat(extraCost || '0') || 0;
                   const net = rev - cAmt - eCost;
+                  const commissionLabel = commissionType === '%'
+                    ? `수수료 (${commissionRate}%)`
+                    : '수수료 (금액)';
                   return (
                     <View style={styles.totalBox}>
                       <View style={styles.totalRow}>
@@ -422,7 +449,7 @@ export default function InputScreen() {
                         <>
                           {cAmt > 0 && (
                             <View style={styles.totalRow}>
-                              <Text style={styles.deductLabel}>수수료 ({commissionRate}%)</Text>
+                              <Text style={styles.deductLabel}>{commissionLabel}</Text>
                               <Text style={styles.deductValue}>-{Math.round(cAmt).toLocaleString()}원</Text>
                             </View>
                           )}

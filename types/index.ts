@@ -88,6 +88,7 @@ export interface DailyStat {
   harvest: number;
   sales: number;
   revenue: number;
+  netRevenue: number;
 }
 
 export type PeriodType = 'day' | 'week' | 'month' | 'year';

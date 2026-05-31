@@ -28,6 +28,7 @@ export default function MoreScreen() {
 
   useEffect(() => {
     if (paramPage === 'chatbot') setPage('chatbot');
+    if (paramPage === 'contacts') setPage('contacts');
   }, [paramPage]);
 
   useEffect(() => {

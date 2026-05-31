@@ -45,10 +45,11 @@ function groupStats(stats: DailyStat[], period: PeriodType): DailyStat[] {
     } else if (period === 'year') {
       key = s.date.slice(0, 4);
     }
-    if (!map[key]) map[key] = { date: key, harvest: 0, sales: 0, revenue: 0 };
+    if (!map[key]) map[key] = { date: key, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 };
     map[key].harvest += s.harvest;
     map[key].sales += s.sales;
     map[key].revenue += s.revenue;
+    map[key].netRevenue += s.netRevenue ?? s.revenue;
   });
   return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -108,7 +109,8 @@ export default function StatisticsScreen() {
     harvest: acc.harvest + s.harvest,
     revenue: acc.revenue + s.revenue,
     sales: acc.sales + s.sales,
-  }), { harvest: 0, revenue: 0, sales: 0 });
+    netRevenue: acc.netRevenue + (s.netRevenue ?? s.revenue),
+  }), { harvest: 0, revenue: 0, sales: 0, netRevenue: 0 });
 
   // 가장 최근 기간 vs 그 이전 기간 비교
   const lastPeriod = grouped[grouped.length - 1];
@@ -144,11 +146,12 @@ export default function StatisticsScreen() {
       </LinearGradient>
 
       <ScrollView style={styles.scroll}>
-        <View style={styles.summaryRow}>
+        <View style={styles.summaryGrid}>
           {[
             { label: '총 수확량', value: `${total.harvest.toLocaleString()}kg`, color: Colors.primary },
             { label: '총 판매량', value: `${total.sales.toLocaleString()}kg`, color: Colors.primaryDark },
             { label: '총 매출', value: `${(total.revenue / 10000).toFixed(0)}만원`, color: Colors.success },
+            { label: '총 순수익', value: `${(total.netRevenue / 10000).toFixed(0)}만원`, color: Colors.warning },
           ].map((item) => (
             <Card key={item.label} style={styles.summaryCard}>
               <Text style={styles.summaryLabel}>{item.label}</Text>
@@ -303,8 +306,8 @@ const styles = StyleSheet.create({
   periodText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
   periodTextActive: { color: Colors.primary },
   scroll: { flex: 1 },
-  summaryRow: { flexDirection: 'row', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
-  summaryCard: { flex: 1, alignItems: 'center', paddingVertical: Spacing.md },
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
+  summaryCard: { width: '48%', alignItems: 'center', paddingVertical: Spacing.md },
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
   chartCard: { margin: Spacing.lg, marginTop: Spacing.sm },

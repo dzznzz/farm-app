@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
 import { Toast, useToast } from '../../components/ui/Toast';
+import { TimePickerModal } from '../../components/modals/TimePickerModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 interface Todo {
@@ -48,6 +49,7 @@ export default function TodoScreen() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newText, setNewText] = useState('');
   const [newTime, setNewTime] = useState('');
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
 
   const load = async (d: string) => {
@@ -183,15 +185,16 @@ export default function TodoScreen() {
               onSubmitEditing={handleAdd}
               returnKeyType="done"
             />
-            <TextInput
-              style={styles.addTimeInput}
-              placeholder="시간 (예: 14:30)"
-              placeholderTextColor={Colors.textLight}
-              value={newTime}
-              onChangeText={setNewTime}
-              keyboardType="numbers-and-punctuation"
-              maxLength={5}
-            />
+            <TouchableOpacity style={styles.addTimeBtn} onPress={() => setShowTimePicker(true)}>
+              <Text style={[styles.addTimeBtnText, newTime ? styles.addTimeBtnActive : null]}>
+                {newTime ? `🕐 ${newTime}` : '⏰ 시간 선택'}
+              </Text>
+              {newTime ? (
+                <TouchableOpacity onPress={() => setNewTime('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.addTimeClear}>✕</Text>
+                </TouchableOpacity>
+              ) : null}
+            </TouchableOpacity>
           </View>
           <TouchableOpacity
             style={[styles.addBtn, !newText.trim() && styles.addBtnDisabled]}
@@ -203,6 +206,12 @@ export default function TodoScreen() {
         </View>
       </KeyboardAvoidingView>
 
+      <TimePickerModal
+        visible={showTimePicker}
+        value={newTime}
+        onSelect={setNewTime}
+        onClose={() => setShowTimePicker(false)}
+      />
       <Toast message={toastMessage} visible={toastVisible} />
     </SafeAreaView>
   );
@@ -279,12 +288,15 @@ const styles = StyleSheet.create({
     paddingVertical: 11, fontSize: 15, color: Colors.text,
     borderWidth: 1, borderColor: Colors.border,
   },
-  addTimeInput: {
+  addTimeBtn: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md, paddingHorizontal: Spacing.md,
-    paddingVertical: 9, fontSize: 13, color: Colors.text,
-    borderWidth: 1, borderColor: Colors.border,
+    paddingVertical: 9, borderWidth: 1, borderColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
+  addTimeBtnText: { fontSize: 13, color: Colors.textLight },
+  addTimeBtnActive: { color: Colors.primary, fontWeight: '600' },
+  addTimeClear: { fontSize: 13, color: Colors.textSub, paddingLeft: 8 },
   addBtn: {
     backgroundColor: Colors.primary, borderRadius: Radius.md,
     paddingHorizontal: Spacing.lg, justifyContent: 'center',
