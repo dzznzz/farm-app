@@ -324,7 +324,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   const allStepsDone = activeStep >= totalSteps;
 
   // Required count for progress badge (create mode)
-  const filledSteps = steps.filter((id) => isStepValid(id)).length;
+  const currentStepDisplay = Math.min(activeStep + 1, totalSteps);
 
   // ── Entries step content ──
   const EntriesContent = () => (
@@ -470,7 +470,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           <Text style={styles.headerTitle}>{isEdit ? `${tabLabel} 수정` : `${tabLabel} 입력`}</Text>
           {!isEdit && (
             <View style={styles.progressBadge}>
-              <Text style={styles.progressText}>{filledSteps}/{totalSteps}</Text>
+              <Text style={styles.progressText}>{currentStepDisplay}/{totalSteps}</Text>
             </View>
           )}
           {isEdit && <View style={{ width: 50 }} />}
