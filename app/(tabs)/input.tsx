@@ -1,633 +1,278 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView,
-  TouchableOpacity, Alert, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
-import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Toast, useToast } from '../../components/ui/Toast';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
-import { CalendarModal } from '../../components/modals/CalendarModal';
-import { SelectModal } from '../../components/modals/SelectModal';
-import { SizeInfoModal, SizeData } from '../../components/modals/SizeInfoModal';
+import { InputFormModal } from '../../components/modals/InputFormModal';
+import { RecordDetailModal, DisplayRecord } from '../../components/modals/RecordDetailModal';
 
 type TabType = 'harvest' | 'sales' | 'other';
-type OtherType = 'gift' | 'waste';
 
-const BLUEBERRY_SIZES = ['대', '특', '왕특', '왕왕특'];
-const DEFAULT_SIZE_INFO: SizeData[] = [
-  { name: '대', range: '14~16mm' },
-  { name: '특', range: '16~18mm' },
-  { name: '왕특', range: '18~20mm' },
-  { name: '왕왕특', range: '20mm 이상' },
+const TABS: { key: TabType; label: string; color: string }[] = [
+  { key: 'harvest', label: '🫐 수확', color: Colors.primary },
+  { key: 'sales', label: '💰 판매', color: Colors.success },
+  { key: 'other', label: '📋 기타', color: Colors.danger },
 ];
-const DEFAULT_UNITS = ['kg', '박스'];
+
+function addDays(dateStr: string, delta: number) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().split('T')[0];
+}
+
+function formatDisplayDate(dateStr: string) {
+  const d = new Date(dateStr);
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+}
 
 export default function InputScreen() {
   const { user } = useAuth();
+  const today = new Date().toISOString().split('T')[0];
+  const [date, setDate] = useState(today);
   const [tab, setTab] = useState<TabType>('harvest');
-  const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string }[]>([]);
-  const [varieties, setVarieties] = useState<string[]>(['신틸라']);
-  const [sizeOptions, setSizeOptions] = useState<string[]>(BLUEBERRY_SIZES);
-  const [sizeInfoData, setSizeInfoData] = useState<SizeData[]>(DEFAULT_SIZE_INFO);
-  const [unitOptions, setUnitOptions] = useState<string[]>(DEFAULT_UNITS);
-  const [selectedFarm, setSelectedFarm] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [cropType, setCropType] = useState('블루베리');
-  const [variety, setVariety] = useState('신틸라');
-  const [size, setSize] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('kg');
-  const [customUnit, setCustomUnit] = useState('');
-  const [pricePerUnit, setPricePerUnit] = useState('');
-  const [buyer, setBuyer] = useState('');
-  const [note, setNote] = useState('');
-  const [otherType, setOtherType] = useState<OtherType>('gift');
-  const [recipient, setRecipient] = useState('');
-  const [commissionRate, setCommissionRate] = useState('');
-  const [commissionType, setCommissionType] = useState<'%' | '원'>('%');
-  const [extraCost, setExtraCost] = useState('');
-  const [customSizeMode, setCustomSizeMode] = useState(false);
-  const { tab: paramTab } = useLocalSearchParams<{ tab?: string }>();
-
-  useEffect(() => {
-    if (paramTab === 'harvest' || paramTab === 'sales' || paramTab === 'other') {
-      setTab(paramTab as TabType);
-    }
-  }, [paramTab]);
-  const [expenseTypes, setExpenseTypes] = useState<string[]>([]);
+  const [records, setRecords] = useState<DisplayRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showCalendar, setShowCalendar] = useState(false);
-  const { toastMessage, toastVisible, showToast } = useToast();
-  const [showVarietySelect, setShowVarietySelect] = useState(false);
-  const [showSizeInfo, setShowSizeInfo] = useState(false);
-
-  // Fetch master data from DB
-  useEffect(() => {
-    supabase.from('harvest_units').select('name').order('sort_order').then(({ data }) => {
-      if (data?.length) setUnitOptions(data.map((u) => u.name));
-    });
-    supabase.from('expense_types').select('name').order('sort_order').then(({ data }) => {
-      if (data?.length) setExpenseTypes(data.map((e: any) => e.name));
-    });
-  }, []);
+  const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string }[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<DisplayRecord | null>(null);
+  const [editRecord, setEditRecord] = useState<DisplayRecord | undefined>(undefined);
 
   useEffect(() => {
     if (!user) return;
     supabase.from('farms').select('id, name, crop_type').eq('user_id', user.id)
-      .then(({ data }) => {
-        if (data?.length) {
-          setFarms(data);
-          setSelectedFarm(data[0].id);
-          if (data[0].crop_type) setCropType(data[0].crop_type);
-        }
-      });
+      .then(({ data }) => { if (data?.length) setFarms(data); });
   }, [user]);
 
-  useEffect(() => {
-    if (!cropType) return;
-    // Fetch varieties from master table
-    supabase.from('varieties_master').select('name').eq('crop_type', cropType).order('sort_order')
-      .then(({ data }) => {
-        if (data?.length) {
-          const names = data.map((v: any) => v.name);
-          setVarieties(names);
-          if (!names.includes(variety)) setVariety(names[0]);
-        } else {
-          // Fallback to legacy varieties table
-          supabase.from('varieties').select('name').eq('crop_type', cropType)
-            .then(({ data: legacy }) => {
-              if (legacy?.length) {
-                const names = legacy.map((v: any) => v.name);
-                setVarieties(names);
-                if (!names.includes(variety)) setVariety(names[0]);
-              }
-            });
-        }
-      });
-
-    // Fetch sizes from master table
-    supabase.from('sizes_master').select('name, range_info').eq('crop_type', cropType).order('sort_order')
-      .then(({ data }) => {
-        if (data?.length) {
-          setSizeOptions(data.map((s: any) => s.name));
-          setSizeInfoData(data.map((s: any) => ({ name: s.name, range: s.range_info ?? '' })));
-        } else {
-          // Fallback to hardcoded
-          setSizeOptions(BLUEBERRY_SIZES);
-          setSizeInfoData(DEFAULT_SIZE_INFO);
-        }
-      });
-  }, [cropType]);
-
-  const finalUnit = unit === '직접입력' ? customUnit : unit;
-  const allUnitOptions = [...unitOptions, '직접입력'];
-
-  const handleFarmSelect = (farm: { id: string; name: string; crop_type: string }) => {
-    setSelectedFarm(farm.id);
-    if (farm.crop_type) setCropType(farm.crop_type);
-  };
-
-  const resetForm = () => {
-    setQuantity(''); setPricePerUnit(''); setBuyer(''); setNote('');
-    setSize(''); setRecipient(''); setCommissionRate(''); setExtraCost('');
-    setCustomSizeMode(false);
-  };
-
-  const handleSave = async () => {
+  const loadRecords = useCallback(async (d: string) => {
     if (!user) return;
-    if (!date) { Alert.alert('입력 오류', '날짜를 선택해주세요.'); return; }
-    if (!cropType.trim()) { Alert.alert('입력 오류', '작물을 입력해주세요.'); return; }
-    if (!variety.trim()) { Alert.alert('입력 오류', '품종을 선택해주세요.'); return; }
-    if (tab !== 'other' && !size.trim()) { Alert.alert('입력 오류', '사이즈를 선택하거나 입력해주세요.'); return; }
-    if (!quantity || isNaN(parseFloat(quantity))) { Alert.alert('입력 오류', '수량을 올바르게 입력해주세요.'); return; }
-    if (unit === '직접입력' && !customUnit.trim()) { Alert.alert('입력 오류', '단위를 직접 입력해주세요.'); return; }
-
     setLoading(true);
+    const [hRes, sRes, oRes] = await Promise.all([
+      supabase.from('harvest_records')
+        .select('id, date, crop_type, variety, size, quantity, unit, note, created_at')
+        .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
+      supabase.from('sales_records')
+        .select('id, date, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, created_at')
+        .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
+      supabase.from('other_records')
+        .select('id, date, crop_type, variety, size, quantity, unit, type, recipient, note, created_at')
+        .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
+    ]);
 
-    const baseFields = {
-      user_id: user.id,
-      farm_id: selectedFarm || null,
-      date,
-      crop_type: cropType || null,
-      variety: variety || null,
-      size: size || null,
-      quantity: parseFloat(quantity),
-      unit: finalUnit,
-    };
+    const combined: DisplayRecord[] = [
+      ...(hRes.data ?? []).map((r: any): DisplayRecord => ({
+        id: r.id, type: 'harvest', date: r.date,
+        cropType: r.crop_type, variety: r.variety, size: r.size,
+        quantity: r.quantity, unit: r.unit, note: r.note,
+      })),
+      ...(sRes.data ?? []).map((r: any): DisplayRecord => ({
+        id: r.id, type: 'sales', date: r.date,
+        cropType: r.crop_type, variety: r.variety, size: r.size,
+        quantity: r.quantity, unit: null,
+        pricePerUnit: r.price_per_unit, totalRevenue: r.total_revenue,
+        commissionRate: r.commission_rate, commissionAmount: r.commission_amount,
+        extraCost: r.extra_cost, buyer: r.buyer,
+      })),
+      ...(oRes.data ?? []).map((r: any): DisplayRecord => ({
+        id: r.id, type: 'other', date: r.date,
+        cropType: r.crop_type, variety: r.variety, size: r.size,
+        quantity: r.quantity, unit: r.unit, note: r.note,
+        otherSubType: r.type, recipient: r.recipient,
+      })),
+    ];
 
-    if (tab === 'harvest') {
-      const { error } = await supabase.from('harvest_records').insert({ ...baseFields, note: note || null });
-      if (error) showToast(`저장 실패: ${error.message}`);
-      else { showToast('저장되었습니다.'); resetForm(); }
-
-    } else if (tab === 'sales') {
-      const price = parseFloat(pricePerUnit);
-      if (!pricePerUnit || isNaN(price)) {
-        Alert.alert('입력 오류', '단가를 입력하세요.');
-        setLoading(false);
-        return;
-      }
-      const totalRevenue = parseFloat(quantity) * price;
-      const commissionInput = parseFloat(commissionRate || '0') || 0;
-      const cAmount = commissionType === '%' ? totalRevenue * commissionInput / 100 : commissionInput;
-      const cRate = commissionType === '%' ? commissionInput : 0;
-      const eCost = parseFloat(extraCost || '0') || 0;
-      // unit column excluded until supabase_migration_003.sql is applied
-      const { unit: _unit, ...salesBase } = baseFields;
-      const { error } = await supabase.from('sales_records').insert({
-        ...salesBase,
-        price_per_unit: price,
-        total_revenue: totalRevenue,
-        buyer: buyer || null,
-        commission_rate: cRate,
-        commission_amount: cAmount,
-        extra_cost: eCost,
-      });
-      if (error) showToast(`저장 실패: ${error.message}`);
-      else { showToast('저장되었습니다.'); resetForm(); }
-
-    } else {
-      const { error } = await supabase.from('other_records').insert({
-        ...baseFields,
-        type: otherType,
-        recipient: otherType === 'gift' ? (recipient || null) : null,
-        note: note || null,
-      });
-      if (error) showToast(`저장 실패: ${error.message}`);
-      else { showToast('저장되었습니다.'); resetForm(); }
-    }
+    setRecords(combined);
     setLoading(false);
+  }, [user]);
+
+  useFocusEffect(useCallback(() => { loadRecords(date); }, [date, loadRecords]));
+
+  const handleDateChange = (delta: number) => {
+    const next = addDays(date, delta);
+    setDate(next);
+    loadRecords(next);
   };
 
-  const TABS: { key: TabType; label: string }[] = [
-    { key: 'harvest', label: '🫐 수확' },
-    { key: 'sales', label: '💰 판매' },
-    { key: 'other', label: '📋 기타' },
-  ];
+  const filtered = records.filter((r) => r.type === tab);
+
+  const getTypeLabel = (r: DisplayRecord) => {
+    if (r.type === 'harvest') return { text: '수확', color: Colors.primary, bg: Colors.primaryUltraLight };
+    if (r.type === 'sales') return { text: '판매', color: Colors.success, bg: '#E8F5E9' };
+    if (r.otherSubType === 'gift') return { text: '나눔', color: Colors.warning, bg: '#FFF8E1' };
+    return { text: '폐기', color: Colors.danger, bg: Colors.dangerLight };
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <LinearGradient colors={[Colors.primaryUltraLight, Colors.background]} style={styles.headerGradient}>
-          <Text style={styles.title}>데이터 입력</Text>
-          <View style={styles.tabContainer}>
-            {TABS.map((t) => (
-              <TouchableOpacity
-                key={t.key}
-                style={[styles.tabBtn, tab === t.key && styles.tabActive]}
-                onPress={() => setTab(t.key)}
-              >
-                <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </LinearGradient>
+      {/* 헤더 */}
+      <LinearGradient colors={[Colors.primaryUltraLight, Colors.background]} style={styles.headerGradient}>
+        <Text style={styles.title}>데이터 입력</Text>
 
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Card style={styles.formCard}>
+        {/* 날짜 네비게이션 */}
+        <View style={styles.dateNav}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => handleDateChange(-1)}>
+            <Text style={styles.navArrow}>‹</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { setDate(today); loadRecords(today); }} style={styles.dateLabel}>
+            <Text style={styles.dateText}>{formatDisplayDate(date)}</Text>
+            {date === today && <Text style={styles.todayBadge}>오늘</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.navBtn} onPress={() => handleDateChange(1)}>
+            <Text style={styles.navArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
 
-            {/* 날짜 */}
-            <FormField label="날짜 *">
-              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowCalendar(true)}>
-                <Text style={styles.dateBtnText}>📅 {date}</Text>
-              </TouchableOpacity>
-            </FormField>
+        {/* 탭 */}
+        <View style={styles.tabContainer}>
+          {TABS.map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tabBtn, tab === t.key && styles.tabActive]}
+              onPress={() => setTab(t.key)}
+            >
+              <Text style={[styles.tabText, tab === t.key && { color: t.color, fontWeight: '700' }]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </LinearGradient>
 
-            {/* 농장 선택 */}
-            {farms.length > 0 && (
-              <FormField label="농장 선택 *">
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {farms.map((f) => (
-                    <TouchableOpacity
-                      key={f.id}
-                      style={[styles.chip, selectedFarm === f.id && styles.chipActive]}
-                      onPress={() => handleFarmSelect(f)}
-                    >
-                      <Text style={[styles.chipText, selectedFarm === f.id && styles.chipTextActive]}>{f.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </FormField>
-            )}
-
-            {/* 작물 */}
-            <FormField label="작물">
-              <TextInput
-                style={styles.input}
-                value={cropType}
-                onChangeText={setCropType}
-                placeholder="예) 블루베리, 딸기"
-                placeholderTextColor={Colors.textLight}
-              />
-            </FormField>
-
-            {/* 품종 */}
-            <FormField label="품종">
-              <TouchableOpacity style={styles.selectBtn} onPress={() => setShowVarietySelect(true)}>
-                <Text style={styles.selectBtnText}>{variety || '품종 선택'}</Text>
-                <Text style={styles.selectArrow}>▾</Text>
-              </TouchableOpacity>
-            </FormField>
-
-            {/* 기타 탭: 구분 */}
-            {tab === 'other' && (
-              <FormField label="구분 *">
-                <View style={styles.chipRow}>
-                  {([['gift', '나눔'], ['waste', '폐기']] as [OtherType, string][]).map(([key, label]) => (
-                    <TouchableOpacity
-                      key={key}
-                      style={[styles.chip, otherType === key && styles.chipActive]}
-                      onPress={() => setOtherType(key)}
-                    >
-                      <Text style={[styles.chipText, otherType === key && styles.chipTextActive]}>{label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                {tab === 'other' && otherType === 'gift' && (
-                  <Text style={styles.hintText}>나눔: 판매 없이 본인 또는 지인에게 나눠준 양</Text>
-                )}
-                {tab === 'other' && otherType === 'waste' && (
-                  <Text style={styles.hintText}>폐기: 품질 저하로 판매하지 못한 양</Text>
-                )}
-              </FormField>
-            )}
-
-            {/* 나눔일 때: 받는 분 */}
-            {tab === 'other' && otherType === 'gift' && (
-              <FormField label="받는 분 (선택)">
-                <TextInput
-                  style={styles.input}
-                  value={recipient}
-                  onChangeText={setRecipient}
-                  placeholder="친구, 지인, 이웃 등"
-                  placeholderTextColor={Colors.textLight}
-                />
-              </FormField>
-            )}
-
-            {/* 사이즈 */}
-            <FormField label={
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={fieldStyles.label}>사이즈{tab !== 'other' ? '' : ' (선택)'}</Text>
-                <TouchableOpacity onPress={() => setShowSizeInfo(true)}>
-                  <Text style={styles.infoIcon}>ℹ</Text>
-                </TouchableOpacity>
-              </View>
-            }>
-              <View style={styles.chipRow}>
-                {sizeOptions.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.chip, !customSizeMode && size === s && styles.chipActive]}
-                    onPress={() => { setCustomSizeMode(false); setSize(size === s ? '' : s); }}
-                  >
-                    <Text style={[styles.chipText, !customSizeMode && size === s && styles.chipTextActive]}>{s}</Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={[styles.chip, customSizeMode && styles.chipActive]}
-                  onPress={() => { setCustomSizeMode(true); setSize(''); }}
-                >
-                  <Text style={[styles.chipText, customSizeMode && styles.chipTextActive]}>직접 입력</Text>
-                </TouchableOpacity>
-              </View>
-              {customSizeMode && (
-                <TextInput
-                  style={[styles.input, { marginTop: 8 }]}
-                  value={size}
-                  onChangeText={setSize}
-                  placeholder="예: 왕왕왕, 점보"
-                  placeholderTextColor={Colors.textLight}
-                  autoFocus
-                />
-              )}
-            </FormField>
-
-            {/* 수량 */}
-            <FormField label={tab === 'harvest' ? '수확량 *' : tab === 'sales' ? '판매량 *' : '수량 *'}>
-              <TextInput
-                style={styles.input}
-                value={quantity}
-                onChangeText={setQuantity}
-                placeholder="0"
-                placeholderTextColor={Colors.textLight}
-                keyboardType="decimal-pad"
-              />
-              <View style={styles.unitRow}>
-                {allUnitOptions.map((u) => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.unitChip, unit === u && styles.chipActive]}
-                    onPress={() => setUnit(u)}
-                  >
-                    <Text style={[styles.unitChipText, unit === u && styles.chipTextActive]}>{u}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {unit === '직접입력' && (
-                <TextInput
-                  style={[styles.input, { marginTop: 8 }]}
-                  value={customUnit}
-                  onChangeText={setCustomUnit}
-                  placeholder="단위 입력 (예: 포, 줄, 트레이)"
-                  placeholderTextColor={Colors.textLight}
-                />
-              )}
-            </FormField>
-
-            {/* 판매 전용 필드 */}
-            {tab === 'sales' && (
-              <>
-                <FormField label="단가 (원) *">
-                  <TextInput
-                    style={styles.input}
-                    value={pricePerUnit}
-                    onChangeText={setPricePerUnit}
-                    placeholder="0"
-                    placeholderTextColor={Colors.textLight}
-                    keyboardType="decimal-pad"
-                  />
-                </FormField>
-
-                <FormField label="수수료">
-                  <View style={styles.chipRow}>
-                    {(['%', '원'] as const).map((t) => (
-                      <TouchableOpacity
-                        key={t}
-                        style={[styles.chip, commissionType === t && styles.chipActive]}
-                        onPress={() => setCommissionType(t)}
-                      >
-                        <Text style={[styles.chipText, commissionType === t && styles.chipTextActive]}>
-                          {t === '%' ? '비율 (%)' : '금액 (원)'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <TextInput
-                    style={[styles.input, { marginTop: 8 }]}
-                    value={commissionRate}
-                    onChangeText={setCommissionRate}
-                    placeholder={commissionType === '%' ? '0 (없으면 비워두세요)' : '0원 (없으면 비워두세요)'}
-                    placeholderTextColor={Colors.textLight}
-                    keyboardType="decimal-pad"
-                  />
-                </FormField>
-
-                <FormField label="부수비용 (원)">
-                  <View style={styles.chipRow}>
-                    {expenseTypes.map((et) => (
-                      <TouchableOpacity
-                        key={et}
-                        style={styles.chip}
-                        onPress={() => {}}
-                      >
-                        <Text style={styles.chipText}>{et}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <TextInput
-                    style={[styles.input, { marginTop: expenseTypes.length ? 8 : 0 }]}
-                    value={extraCost}
-                    onChangeText={setExtraCost}
-                    placeholder="0 (택배비, 포장비 등 합계)"
-                    placeholderTextColor={Colors.textLight}
-                    keyboardType="decimal-pad"
-                  />
-                </FormField>
-
-                {quantity && pricePerUnit ? (() => {
-                  const rev = parseFloat(quantity || '0') * parseFloat(pricePerUnit || '0');
-                  const commissionInput = parseFloat(commissionRate || '0') || 0;
-                  const cAmt = commissionType === '%' ? rev * commissionInput / 100 : commissionInput;
-                  const eCost = parseFloat(extraCost || '0') || 0;
-                  const net = rev - cAmt - eCost;
-                  const commissionLabel = commissionType === '%'
-                    ? `수수료 (${commissionRate}%)`
-                    : '수수료 (금액)';
-                  return (
-                    <View style={styles.totalBox}>
-                      <View style={styles.totalRow}>
-                        <Text style={styles.totalLabel}>총 매출액</Text>
-                        <Text style={styles.totalValue}>{rev.toLocaleString()}원</Text>
+      {/* 목록 */}
+      {loading ? (
+        <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
+      ) : (
+        <ScrollView style={styles.scroll} contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}>
+          {filtered.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyEmoji}>
+                {tab === 'harvest' ? '🫐' : tab === 'sales' ? '💰' : '📋'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {formatDisplayDate(date)} {tab === 'harvest' ? '수확' : tab === 'sales' ? '판매' : '기타'} 기록이 없습니다
+              </Text>
+              <Text style={styles.emptySubText}>아래 + 버튼으로 추가하세요</Text>
+            </View>
+          ) : (
+            filtered.map((r) => {
+              const lbl = getTypeLabel(r);
+              return (
+                <TouchableOpacity key={r.id} onPress={() => setSelectedRecord(r)} activeOpacity={0.75}>
+                  <Card style={styles.recordCard}>
+                    <View style={styles.recordRow}>
+                      <View style={[styles.typeBadge, { backgroundColor: lbl.bg }]}>
+                        <Text style={[styles.typeBadgeText, { color: lbl.color }]}>{lbl.text}</Text>
                       </View>
-                      {(cAmt > 0 || eCost > 0) && (
-                        <>
-                          {cAmt > 0 && (
-                            <View style={styles.totalRow}>
-                              <Text style={styles.deductLabel}>{commissionLabel}</Text>
-                              <Text style={styles.deductValue}>-{Math.round(cAmt).toLocaleString()}원</Text>
-                            </View>
-                          )}
-                          {eCost > 0 && (
-                            <View style={styles.totalRow}>
-                              <Text style={styles.deductLabel}>부수비용</Text>
-                              <Text style={styles.deductValue}>-{eCost.toLocaleString()}원</Text>
-                            </View>
-                          )}
-                          <View style={[styles.totalRow, styles.netRow]}>
-                            <Text style={styles.netLabel}>순수익</Text>
-                            <Text style={[styles.totalValue, { color: net >= 0 ? Colors.success : Colors.danger }]}>
-                              {Math.round(net).toLocaleString()}원
-                            </Text>
-                          </View>
-                        </>
-                      )}
+                      <View style={styles.recordInfo}>
+                        <Text style={styles.recordMain} numberOfLines={1}>
+                          {[r.cropType, r.variety, r.size].filter(Boolean).join(' · ')}
+                        </Text>
+                        <Text style={styles.recordSub}>
+                          {r.quantity} {r.unit ?? 'kg'}
+                          {r.type === 'sales' && r.totalRevenue
+                            ? ` · ${r.totalRevenue.toLocaleString()}원`
+                            : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.chevron}>›</Text>
                     </View>
-                  );
-                })() : null}
-
-                <FormField label="구매자 (선택)">
-                  <TextInput
-                    style={styles.input}
-                    value={buyer}
-                    onChangeText={setBuyer}
-                    placeholder="구매자명 또는 판매처"
-                    placeholderTextColor={Colors.textLight}
-                  />
-                </FormField>
-              </>
-            )}
-
-            {/* 메모 (수확/기타) */}
-            {tab !== 'sales' && (
-              <FormField label="메모 (선택)">
-                <TextInput
-                  style={[styles.input, styles.textarea]}
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="특이사항이나 메모를 입력하세요"
-                  placeholderTextColor={Colors.textLight}
-                  multiline
-                  numberOfLines={3}
-                />
-              </FormField>
-            )}
-
-            <Button
-              title={tab === 'harvest' ? '수확량 저장' : tab === 'sales' ? '판매 기록 저장' : '기타 기록 저장'}
-              onPress={handleSave}
-              loading={loading}
-              style={{ marginTop: Spacing.md }}
-            />
-          </Card>
-
-          <View style={{ height: Spacing.xl }} />
+                  </Card>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </ScrollView>
-      </KeyboardAvoidingView>
+      )}
 
-      <CalendarModal
-        visible={showCalendar}
-        value={date}
-        onSelect={setDate}
-        onClose={() => setShowCalendar(false)}
+      {/* FAB */}
+      <TouchableOpacity style={styles.fab} onPress={() => setShowForm(true)} activeOpacity={0.85}>
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+
+      {/* 입력 폼 모달 */}
+      <InputFormModal
+        visible={showForm}
+        tab={editRecord?.type ?? tab}
+        farms={farms}
+        userId={user?.id ?? ''}
+        editRecord={editRecord}
+        onClose={() => { setShowForm(false); setEditRecord(undefined); }}
+        onSaved={() => { loadRecords(date); }}
       />
-      <SelectModal
-        visible={showVarietySelect}
-        title="품종 선택"
-        options={varieties}
-        value={variety}
-        onSelect={setVariety}
-        onClose={() => setShowVarietySelect(false)}
-        allowCustom
+
+      {/* 레코드 상세/수정/삭제 모달 */}
+      <RecordDetailModal
+        visible={selectedRecord !== null}
+        record={selectedRecord}
+        onClose={() => setSelectedRecord(null)}
+        onDeleted={() => loadRecords(date)}
+        onEdit={(r) => {
+          setSelectedRecord(null);
+          setEditRecord(r);
+          setShowForm(true);
+        }}
       />
-      <SizeInfoModal
-        visible={showSizeInfo}
-        onClose={() => setShowSizeInfo(false)}
-        sizes={sizeInfoData}
-      />
-      <Toast message={toastMessage} visible={toastVisible} />
     </SafeAreaView>
   );
 }
 
-function FormField({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <View style={{ marginBottom: Spacing.md }}>
-      {typeof label === 'string'
-        ? <Text style={fieldStyles.label}>{label}</Text>
-        : label}
-      {children}
-    </View>
-  );
-}
-
-const fieldStyles = StyleSheet.create({
-  label: { ...Typography.label, marginBottom: Spacing.xs },
-});
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  headerGradient: { paddingBottom: Spacing.lg },
-  title: { ...Typography.h2, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, marginBottom: Spacing.md },
-  tabContainer: {
-    flexDirection: 'row',
-    marginHorizontal: Spacing.lg,
-    backgroundColor: Colors.border,
-    borderRadius: Radius.full,
-    padding: 3,
+  headerGradient: { paddingBottom: Spacing.md },
+  title: { ...Typography.h2, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, marginBottom: Spacing.sm },
+  dateNav: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm,
   },
-  tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: Radius.full },
+  navBtn: { padding: 8 },
+  navArrow: { fontSize: 28, color: Colors.primary, fontWeight: '300' },
+  dateLabel: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateText: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  todayBadge: {
+    fontSize: 11, fontWeight: '700', color: Colors.primary,
+    backgroundColor: Colors.primaryUltraLight, paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.primaryLight,
+  },
+  tabContainer: {
+    flexDirection: 'row', marginHorizontal: Spacing.lg,
+    backgroundColor: Colors.border, borderRadius: Radius.full, padding: 3,
+  },
+  tabBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: Radius.full },
   tabActive: { backgroundColor: Colors.surface },
   tabText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
-  tabTextActive: { color: Colors.primary },
   scroll: { flex: 1 },
-  formCard: { margin: Spacing.lg },
-  input: {
-    backgroundColor: Colors.background,
-    borderRadius: Radius.md,
-    padding: 14,
-    fontSize: 15,
-    color: Colors.text,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  empty: { alignItems: 'center', marginTop: 60 },
+  emptyEmoji: { fontSize: 48, marginBottom: 12 },
+  emptyText: { ...Typography.body, color: Colors.textSub, textAlign: 'center' },
+  emptySubText: { ...Typography.caption, marginTop: 6, color: Colors.textLight },
+  recordCard: { marginBottom: Spacing.sm, padding: 0, overflow: 'hidden' },
+  recordRow: { flexDirection: 'row', alignItems: 'center', padding: Spacing.md, gap: Spacing.sm },
+  typeBadge: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full,
+    alignSelf: 'flex-start',
   },
-  textarea: { height: 80, textAlignVertical: 'top' },
-  dateBtn: {
-    backgroundColor: Colors.background, borderRadius: Radius.md,
-    padding: 14, borderWidth: 1, borderColor: Colors.border,
+  typeBadgeText: { fontSize: 12, fontWeight: '700' },
+  recordInfo: { flex: 1 },
+  recordMain: { ...Typography.bodyBold, marginBottom: 2 },
+  recordSub: { ...Typography.caption, color: Colors.textSub },
+  chevron: { fontSize: 20, color: Colors.textLight, fontWeight: '300' },
+  fab: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 36 : 24,
+    right: 24,
+    width: 60, height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 6, elevation: 8,
   },
-  dateBtnText: { fontSize: 15, color: Colors.text, fontWeight: '500' },
-  selectBtn: {
-    backgroundColor: Colors.background, borderRadius: Radius.md, padding: 14,
-    borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', justifyContent: 'space-between',
-  },
-  selectBtnText: { fontSize: 15, color: Colors.text },
-  selectArrow: { fontSize: 14, color: Colors.textSub },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full,
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.background,
-  },
-  chipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
-  chipText: { fontSize: 13, color: Colors.textSub, fontWeight: '500' },
-  chipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
-  infoIcon: {
-    fontSize: 16, color: Colors.primary, fontWeight: '700',
-    width: 20, height: 20, textAlign: 'center', lineHeight: 20,
-  },
-  unitRow: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
-  unitChip: {
-    flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: Radius.full,
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.background,
-    minWidth: 60,
-  },
-  unitChipText: { fontSize: 13, color: Colors.textSub, fontWeight: '500' },
-  hintText: { ...Typography.caption, marginTop: 6, color: Colors.textSub },
-  totalBox: {
-    backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
-    padding: Spacing.md, marginBottom: Spacing.md,
-  },
-  totalLabel: { ...Typography.caption },
-  totalValue: { fontSize: 22, fontWeight: '800', color: Colors.primaryDark },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  deductLabel: { ...Typography.caption, color: Colors.textSub },
-  deductValue: { ...Typography.caption, color: Colors.danger, fontWeight: '600' },
-  netRow: { borderTopWidth: 1, borderTopColor: Colors.primaryLight, marginTop: 6, paddingTop: 6 },
-  netLabel: { ...Typography.bodyBold, color: Colors.text },
+  fabText: { color: '#fff', fontSize: 30, fontWeight: '300', lineHeight: 34 },
 });

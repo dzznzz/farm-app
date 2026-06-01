@@ -90,7 +90,10 @@ export default function HomeScreen() {
   };
 
   const now = new Date();
-  const greeting = now.getHours() < 12 ? '좋은 아침이에요' : now.getHours() < 18 ? '안녕하세요' : '수고하셨어요';
+  const h = now.getHours();
+  const greeting = (h >= 5 && h < 10) ? '좋은 아침이에요🙌'
+    : (h >= 10 && h < 17) ? '오늘도 화이팅👍'
+    : '수고하셨어요 👋';
 
   const QUICK_MENUS = [
     { emoji: '🫐', label: '수확 입력', onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'harvest' } } as any) },

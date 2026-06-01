@@ -17,6 +17,7 @@ interface Props {
 }
 
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
 
 export function ExportModal({ visible, onClose, userId }: Props) {
   const now = new Date();
@@ -25,11 +26,9 @@ export function ExportModal({ visible, onClose, userId }: Props) {
   const [exporting, setExporting] = useState(false);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
 
-  // WEB_CLIENT_ID가 없을 때 빈 문자열로 useAuthRequest를 호출하면 내부에서
-  // "clientId is required" 에러가 발생하므로 placeholder를 사용해 훅이 안전하게 초기화되도록 함.
-  // 실제 Google 인증은 handleExport에서 WEB_CLIENT_ID 존재 여부를 다시 확인함.
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  const [request, , promptAsync] = Google.useAuthRequest({
     webClientId: WEB_CLIENT_ID || '__not_configured__',
+    iosClientId: IOS_CLIENT_ID || undefined,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 

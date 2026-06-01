@@ -1,19 +1,128 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { DailyStat, BreakdownItem } from '../types';
+import { DailyStat, BreakdownItem, PeriodType } from '../types';
 
+/** Date range for the trend chart: last 7 periods */
 export function getDateRange(period: 'day' | 'week' | 'month' | 'year') {
   const now = new Date();
   const start = new Date(now);
 
-  if (period === 'day') start.setDate(now.getDate() - 30);
-  else if (period === 'week') start.setDate(now.getDate() - 12 * 7);
-  else if (period === 'month') start.setMonth(now.getMonth() - 12);
-  else start.setFullYear(now.getFullYear() - 5);
+  if (period === 'day') start.setDate(now.getDate() - 7);
+  else if (period === 'week') start.setDate(now.getDate() - 7 * 7);
+  else if (period === 'month') start.setMonth(now.getMonth() - 7);
+  else start.setFullYear(now.getFullYear() - 7);
 
   return {
     from: start.toISOString().split('T')[0],
     to: now.toISOString().split('T')[0],
+  };
+}
+
+/** Current period range (for summary cards) and previous period range (for comparison) */
+export function getCurrentAndPrevRange(period: PeriodType) {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  let curFrom: string, curTo: string, prevFrom: string, prevTo: string;
+
+  if (period === 'day') {
+    curFrom = todayStr;
+    curTo = todayStr;
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yStr = yesterday.toISOString().split('T')[0];
+    prevFrom = yStr;
+    prevTo = yStr;
+  } else if (period === 'week') {
+    // Monday-based week
+    const dow = today.getDay();
+    const daysFromMonday = dow === 0 ? 6 : dow - 1;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - daysFromMonday);
+    curFrom = monday.toISOString().split('T')[0];
+    curTo = todayStr;
+    const lastMonday = new Date(monday);
+    lastMonday.setDate(monday.getDate() - 7);
+    const lastSunday = new Date(monday);
+    lastSunday.setDate(monday.getDate() - 1);
+    prevFrom = lastMonday.toISOString().split('T')[0];
+    prevTo = lastSunday.toISOString().split('T')[0];
+  } else if (period === 'month') {
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    curFrom = firstOfMonth.toISOString().split('T')[0];
+    curTo = todayStr;
+    const firstOfLast = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastOfLast = new Date(today.getFullYear(), today.getMonth(), 0);
+    prevFrom = firstOfLast.toISOString().split('T')[0];
+    prevTo = lastOfLast.toISOString().split('T')[0];
+  } else {
+    const firstOfYear = new Date(today.getFullYear(), 0, 1);
+    curFrom = firstOfYear.toISOString().split('T')[0];
+    curTo = todayStr;
+    const firstOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+    const lastOfLastYear = new Date(today.getFullYear() - 1, 11, 31);
+    prevFrom = firstOfLastYear.toISOString().split('T')[0];
+    prevTo = lastOfLastYear.toISOString().split('T')[0];
+  }
+
+  return { curFrom, curTo, prevFrom, prevTo };
+}
+
+export interface PeriodSummary {
+  harvest: number;
+  sales: number;
+  revenue: number;
+  netRevenue: number;
+  stock: number;
+  laborCost: number;
+}
+
+/** Fetch aggregate totals for current and previous period */
+export async function fetchPeriodSummary(userId: string, period: PeriodType): Promise<{
+  current: PeriodSummary;
+  previous: PeriodSummary;
+}> {
+  const { curFrom, curTo, prevFrom, prevTo } = getCurrentAndPrevRange(period);
+
+  const [cH, cS, cO, cL, pH, pS] = await Promise.all([
+    supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo),
+    supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo),
+    supabase.from('other_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo),
+    supabase.from('labor_records').select('labor_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo),
+    supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo),
+    supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo),
+  ]);
+
+  const sum = (data: any[] | null, key: string) => data?.reduce((s: number, r: any) => s + (r[key] ?? 0), 0) ?? 0;
+
+  const curHarvest = sum(cH.data, 'quantity');
+  const curSales = sum(cS.data, 'quantity');
+  const curRevenue = sum(cS.data, 'total_revenue');
+  const curNet = curRevenue - sum(cS.data, 'commission_amount') - sum(cS.data, 'extra_cost');
+  const curOther = sum(cO.data, 'quantity');
+  const curLabor = cL.error ? 0 : sum(cL.data, 'labor_cost');
+
+  const prevHarvest = sum(pH.data, 'quantity');
+  const prevRevenue = sum(pS.data, 'total_revenue');
+  const prevNet = prevRevenue - sum(pS.data, 'commission_amount') - sum(pS.data, 'extra_cost');
+
+  return {
+    current: {
+      harvest: curHarvest,
+      sales: curSales,
+      revenue: curRevenue,
+      netRevenue: curNet - curLabor,
+      stock: curHarvest - curSales - curOther,
+      laborCost: curLabor,
+    },
+    previous: {
+      harvest: prevHarvest,
+      sales: sum(pS.data, 'quantity'),
+      revenue: prevRevenue,
+      netRevenue: prevNet,
+      stock: 0,
+      laborCost: 0,
+    },
   };
 }
 
@@ -73,8 +182,11 @@ export async function fetchSummary(userId: string) {
   yesterday.setDate(today.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
 
+  // Monday-based week
+  const dow = today.getDay();
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
   const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - today.getDay());
+  weekStart.setDate(today.getDate() - daysFromMonday);
   const weekStartStr = weekStart.toISOString().split('T')[0];
 
   const lastWeekStart = new Date(weekStart);

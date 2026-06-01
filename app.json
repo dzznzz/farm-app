@@ -18,7 +18,14 @@
         "NSLocationWhenInUseUsageDescription": "수확 동선 추적을 위해 위치 접근이 필요합니다.",
         "NSLocationAlwaysUsageDescription": "백그라운드 수확 동선 추적을 위해 위치 접근이 필요합니다.",
         "NSContactsUsageDescription": "판매 거래처 연락처 관리를 위해 연락처 접근이 필요합니다.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.971453817083-gprhfenf0sjciiu2vmafnihpihldpf8k"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -55,7 +62,8 @@
         }
       ],
       "expo-web-browser",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-notifications"
     ],
     "scheme": "dzznzz",
     "extra": {

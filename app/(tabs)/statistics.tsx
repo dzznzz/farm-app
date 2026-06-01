@@ -7,8 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { BarChart } from 'react-native-gifted-charts';
 import { useAuth } from '../../hooks/useAuth';
-import { useStats, getDateRange } from '../../hooks/useStats';
-import { supabase } from '../../lib/supabase';
+import { useStats, getCurrentAndPrevRange, fetchPeriodSummary, PeriodSummary } from '../../hooks/useStats';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
 import { BreakdownModal } from '../../components/modals/BreakdownModal';
@@ -31,14 +30,15 @@ const COMPARE_LABELS: Record<PeriodType, { revenue: string; harvest: string }> =
 };
 
 function groupStats(stats: DailyStat[], period: PeriodType): DailyStat[] {
-  if (period === 'day') return stats.slice(-30);
+  if (period === 'day') return stats;
 
   const map: Record<string, DailyStat> = {};
   stats.forEach((s) => {
     let key = s.date;
     if (period === 'week') {
       const d = new Date(s.date);
-      d.setDate(d.getDate() - d.getDay());
+      const dow = d.getDay();
+      d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
       key = d.toISOString().split('T')[0];
     } else if (period === 'month') {
       key = s.date.slice(0, 7);
@@ -61,18 +61,41 @@ function formatDate(date: string, period: PeriodType): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+function formatRevenue(v: number): string {
+  if (v >= 10000) return `${(v / 10000).toFixed(1)}만`;
+  return `${v.toLocaleString()}원`;
+}
+
+function formatHarvest(v: number): string {
+  return `${v.toLocaleString()}kg`;
+}
+
+const EMPTY_SUMMARY: PeriodSummary = { harvest: 0, sales: 0, revenue: 0, netRevenue: 0, stock: 0, laborCost: 0 };
+
 export default function StatisticsScreen() {
   const { user } = useAuth();
   const { stats, loading, fetchStats } = useStats(user?.id);
   const { period: paramPeriod } = useLocalSearchParams<{ period?: string }>();
   const [period, setPeriod] = useState<PeriodType>((paramPeriod as PeriodType) ?? 'day');
   const [chartType, setChartType] = useState<'harvest' | 'revenue'>('harvest');
-  const [wasteTotal, setWasteTotal] = useState(0);
-  const [wasteLoading, setWasteLoading] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [periodSummary, setPeriodSummary] = useState<{ current: PeriodSummary; previous: PeriodSummary }>({
+    current: EMPTY_SUMMARY,
+    previous: EMPTY_SUMMARY,
+  });
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
-  useEffect(() => { fetchStats(period); }, [period, user?.id]);
+  const loadAll = useCallback(async (p: PeriodType) => {
+    if (!user) return;
+    fetchStats(p);
+    setSummaryLoading(true);
+    const result = await fetchPeriodSummary(user.id, p);
+    setPeriodSummary(result);
+    setSummaryLoading(false);
+  }, [user, fetchStats]);
+
+  useEffect(() => { loadAll(period); }, [period, user?.id]);
 
   useEffect(() => {
     if (paramPeriod && ['day', 'week', 'month', 'year'].includes(paramPeriod)) {
@@ -80,53 +103,28 @@ export default function StatisticsScreen() {
     }
   }, [paramPeriod]);
 
-  useFocusEffect(
-    useCallback(() => { fetchStats(period); }, [period, fetchStats])
-  );
-
-  useEffect(() => {
-    if (!user) return;
-    setWasteLoading(true);
-    (async () => {
-      const { data } = await supabase
-        .from('other_records')
-        .select('quantity')
-        .eq('user_id', user.id);
-      setWasteTotal(data?.reduce((s: any, r: any) => s + r.quantity, 0) ?? 0);
-      setWasteLoading(false);
-    })();
-  }, [user]);
+  useFocusEffect(useCallback(() => { loadAll(period); }, [period, loadAll]));
 
   const grouped = groupStats(stats, period);
-  const chartData = grouped.slice(-12).map((s) => ({
+  const chartData = grouped.slice(-7).map((s) => ({
     value: chartType === 'harvest' ? s.harvest : s.revenue / 10000,
     label: formatDate(s.date, period),
     frontColor: Colors.primary,
   }));
   const hasChartData = chartData.some((d) => d.value > 0);
 
-  const total = grouped.reduce((acc, s) => ({
-    harvest: acc.harvest + s.harvest,
-    revenue: acc.revenue + s.revenue,
-    sales: acc.sales + s.sales,
-    netRevenue: acc.netRevenue + (s.netRevenue ?? s.revenue),
-  }), { harvest: 0, revenue: 0, sales: 0, netRevenue: 0 });
-
-  // 가장 최근 기간 vs 그 이전 기간 비교
-  const lastPeriod = grouped[grouped.length - 1];
-  const prevPeriod = grouped[grouped.length - 2];
-
-  const revenueChange = lastPeriod && prevPeriod && prevPeriod.revenue > 0
-    ? ((lastPeriod.revenue - prevPeriod.revenue) / prevPeriod.revenue) * 100
-    : null;
-
-  const harvestChange = lastPeriod && prevPeriod && prevPeriod.harvest > 0
-    ? ((lastPeriod.harvest - prevPeriod.harvest) / prevPeriod.harvest) * 100
-    : null;
-
+  const cur = periodSummary.current;
+  const prev = periodSummary.previous;
   const labels = COMPARE_LABELS[period];
-  const stockRemaining = total.harvest - total.sales - wasteTotal;
-  const { from: breakdownFrom, to: breakdownTo } = getDateRange(period);
+
+  const revenueRate = prev.revenue > 0
+    ? ((cur.revenue - prev.revenue) / prev.revenue) * 100
+    : null;
+  const harvestRate = prev.harvest > 0
+    ? ((cur.harvest - prev.harvest) / prev.harvest) * 100
+    : null;
+
+  const { curFrom, curTo } = getCurrentAndPrevRange(period);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -146,20 +144,34 @@ export default function StatisticsScreen() {
       </LinearGradient>
 
       <ScrollView style={styles.scroll}>
-        <View style={styles.summaryGrid}>
-          {[
-            { label: '총 수확량', value: `${total.harvest.toLocaleString()}kg`, color: Colors.primary },
-            { label: '총 판매량', value: `${total.sales.toLocaleString()}kg`, color: Colors.primaryDark },
-            { label: '총 매출', value: `${(total.revenue / 10000).toFixed(0)}만원`, color: Colors.success },
-            { label: '총 순수익', value: `${(total.netRevenue / 10000).toFixed(0)}만원`, color: Colors.warning },
-          ].map((item) => (
-            <Card key={item.label} style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>{item.label}</Text>
-              <Text style={[styles.summaryValue, { color: item.color }]}>{item.value}</Text>
-            </Card>
-          ))}
-        </View>
+        {/* 요약 카드 */}
+        {summaryLoading ? (
+          <ActivityIndicator color={Colors.primary} style={{ marginVertical: Spacing.lg }} />
+        ) : (
+          <View style={styles.summaryGrid}>
+            {[
+              { label: '수확량', value: `${cur.harvest.toLocaleString()}kg`, color: Colors.primary },
+              { label: '판매량', value: `${cur.sales.toLocaleString()}kg`, color: Colors.primaryDark },
+              { label: '매출', value: `${(cur.revenue / 10000).toFixed(1)}만원`, color: Colors.success },
+              { label: '순수익', value: `${(cur.netRevenue / 10000).toFixed(1)}만원`, color: Colors.warning },
+            ].map((item) => (
+              <Card key={item.label} style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>{item.label}</Text>
+                <Text style={[styles.summaryValue, { color: item.color }]}>{item.value}</Text>
+              </Card>
+            ))}
+            {cur.laborCost > 0 && (
+              <Card style={styles.laborCard}>
+                <Text style={styles.summaryLabel}>인건비 차감</Text>
+                <Text style={[styles.summaryValue, { color: Colors.danger }]}>
+                  −{(cur.laborCost / 10000).toFixed(1)}만원
+                </Text>
+              </Card>
+            )}
+          </View>
+        )}
 
+        {/* 추이 차트 */}
         <Card style={styles.chartCard}>
           <View style={styles.chartHeader}>
             <Text style={Typography.h3}>
@@ -185,8 +197,8 @@ export default function StatisticsScreen() {
           ) : chartData.length > 0 && hasChartData ? (
             <BarChart
               data={chartData}
-              barWidth={chartData.length > 8 ? 18 : 28}
-              spacing={chartData.length > 8 ? 6 : 12}
+              barWidth={chartData.length > 5 ? 24 : 32}
+              spacing={chartData.length > 5 ? 10 : 16}
               roundedTop
               roundedBottom
               hideRules
@@ -205,52 +217,67 @@ export default function StatisticsScreen() {
           )}
         </Card>
 
+        {/* 기간 비교 */}
         <Card style={styles.compareCard}>
           <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>기간 비교</Text>
-          {[
-            { label: labels.revenue, value: revenueChange },
-            { label: labels.harvest, value: harvestChange },
-          ].map((item) => (
-            <View key={item.label} style={styles.compareRow}>
-              <Text style={styles.compareLabel}>{item.label}</Text>
-              {item.value !== null ? (
-                <StatBadge value={item.value} />
-              ) : (
-                <Text style={styles.noDataText}>이전 데이터 없음</Text>
-              )}
+
+          {/* 매출 비교 */}
+          <View style={styles.compareRow}>
+            <Text style={styles.compareLabel}>{labels.revenue}</Text>
+            <View style={styles.compareRight}>
+              <Text style={styles.compareValues}>
+                {formatRevenue(cur.revenue)} / {formatRevenue(prev.revenue)}
+              </Text>
+              {revenueRate !== null
+                ? <StatBadge value={revenueRate} />
+                : <Text style={styles.noDataText}>이전 데이터 없음</Text>}
             </View>
-          ))}
+          </View>
+
+          {/* 수확량 비교 */}
+          <View style={[styles.compareRow, { marginTop: Spacing.sm }]}>
+            <Text style={styles.compareLabel}>{labels.harvest}</Text>
+            <View style={styles.compareRight}>
+              <Text style={styles.compareValues}>
+                {formatHarvest(cur.harvest)} / {formatHarvest(prev.harvest)}
+              </Text>
+              {harvestRate !== null
+                ? <StatBadge value={harvestRate} />
+                : <Text style={styles.noDataText}>이전 데이터 없음</Text>}
+            </View>
+          </View>
         </Card>
 
+        {/* 잔여 재고 */}
         <Card style={styles.stockCard}>
-          <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>잔여 재고</Text>
+          <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>잔여 재고 (이번 기간)</Text>
           <View style={styles.stockRow}>
             <View style={styles.stockItem}>
               <Text style={styles.stockLabel}>수확량</Text>
               <Text style={[styles.stockValue, { color: Colors.primary }]}>
-                {total.harvest.toLocaleString()}kg
+                {cur.harvest.toLocaleString()}kg
               </Text>
             </View>
             <Text style={styles.stockOp}>−</Text>
             <View style={styles.stockItem}>
               <Text style={styles.stockLabel}>판매량</Text>
               <Text style={[styles.stockValue, { color: Colors.primaryDark }]}>
-                {total.sales.toLocaleString()}kg
+                {cur.sales.toLocaleString()}kg
               </Text>
             </View>
             <Text style={styles.stockOp}>−</Text>
             <View style={styles.stockItem}>
               <Text style={styles.stockLabel}>기타</Text>
               <Text style={[styles.stockValue, { color: Colors.danger }]}>
-                {wasteLoading ? '...' : `${wasteTotal.toLocaleString()}kg`}
+                {(cur.harvest - cur.sales - cur.stock).toLocaleString()}kg
               </Text>
             </View>
           </View>
           <View style={styles.stockDivider} />
           <View style={styles.stockResultRow}>
             <Text style={styles.stockResultLabel}>재고</Text>
-            <Text style={[styles.stockResultValue, { color: stockRemaining >= 0 ? Colors.success : Colors.danger }]}>
-              {stockRemaining.toLocaleString()}kg
+            <Text style={[styles.stockResultValue, { color: cur.stock >= 0 ? Colors.success : Colors.danger }]}>
+              {cur.stock.toLocaleString()}kg
             </Text>
           </View>
         </Card>
@@ -273,8 +300,8 @@ export default function StatisticsScreen() {
           visible={showBreakdown}
           onClose={() => setShowBreakdown(false)}
           userId={user.id}
-          from={breakdownFrom}
-          to={breakdownTo}
+          from={curFrom}
+          to={curTo}
         />
       )}
       {user && showExport && (
@@ -306,6 +333,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   summaryCard: { width: '48%', alignItems: 'center', paddingVertical: Spacing.md },
+  laborCard: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm },
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
   chartCard: { margin: Spacing.lg, marginTop: Spacing.sm },
@@ -333,10 +361,12 @@ const styles = StyleSheet.create({
   compareRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
+    alignItems: 'flex-start',
+    paddingVertical: Spacing.xs,
   },
-  compareLabel: { ...Typography.body },
+  compareLabel: { ...Typography.body, flex: 1 },
+  compareRight: { alignItems: 'flex-end', gap: 4 },
+  compareValues: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   noDataText: { ...Typography.caption, color: Colors.textLight },
   stockCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.sm },
   stockRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

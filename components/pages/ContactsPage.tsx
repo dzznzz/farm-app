@@ -30,6 +30,7 @@ export function ContactsPage({ onBack, userId }: Props) {
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 
   const loadContacts = async () => {
@@ -44,37 +45,69 @@ export function ContactsPage({ onBack, userId }: Props) {
   useEffect(() => { loadContacts(); }, [userId, sortMode]);
 
   const importFromDevice = async () => {
-    if (!isMobile) { Alert.alert('안내', '휴대폰에서만 사용 가능한 기능입니다.'); return; }
-    const { status } = await Contacts.requestPermissionsAsync();
-    // iOS 14+에서 "일부 허용" 선택 시 status가 'limited'로 반환됨
-    if (status !== 'granted' && status !== 'limited') { Alert.alert('권한 필요', '연락처 권한을 허용해주세요.'); return; }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: any = await Contacts.getContactsAsync({
-      fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.FirstName, Contacts.Fields.LastName],
-    } as any);
-    const validContacts: any[] = (result.data ?? []).map((c: any) => ({
-      ...c,
-      resolvedName: c.name || [c.firstName, c.lastName].filter(Boolean).join(' ').trim(),
-    })).filter((c: any) => c.resolvedName);
-    if (validContacts.length === 0) {
-      Alert.alert('연락처 없음', '가져올 수 있는 연락처가 없습니다.\niOS 설정에서 연락처 접근 권한을 확인해주세요.');
-      return;
+    if (!isMobile || !userId || importing) return;
+    setImporting(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      const permStatus: string = status;
+      if (permStatus !== 'granted' && permStatus !== 'limited') {
+        Alert.alert(
+          '연락처 권한 필요',
+          '설정 → 개인정보 보호 → 연락처에서 허용해주세요.',
+          [
+            { text: '취소', style: 'cancel' },
+            { text: '설정 열기', onPress: () => Linking.openURL('app-settings:') },
+          ]
+        );
+        return;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.FirstName, Contacts.Fields.LastName],
+      } as any);
+      const validContacts: any[] = (result.data ?? []).map((c: any) => ({
+        ...c,
+        resolvedName: c.name || [c.firstName, c.lastName].filter(Boolean).join(' ').trim(),
+      })).filter((c: any) => c.resolvedName);
+
+      if (validContacts.length === 0) {
+        Alert.alert(
+          '연락처 없음',
+          '가져올 연락처가 없습니다.\n권한이 "선택된 연락처만"인 경우 설정에서 변경해주세요.',
+          [
+            { text: '확인', style: 'cancel' },
+            { text: '설정 열기', onPress: () => Linking.openURL('app-settings:') },
+          ]
+        );
+        return;
+      }
+
+      const existingNames = new Set(contacts.map((c) => c.name.trim().toLowerCase()));
+      const newContacts = validContacts.filter((c: any) => !existingNames.has(c.resolvedName.toLowerCase()));
+
+      if (newContacts.length === 0) {
+        Alert.alert('안내', `전체 ${validContacts.length}개 연락처가 이미 등록되어 있습니다.`);
+        return;
+      }
+
+      const baseOrder = contacts.length;
+      const rows = newContacts.map((c: any, i: number) => ({
+        user_id: userId, name: c.resolvedName, phone: c.phoneNumbers?.[0]?.number ?? null, sort_order: baseOrder + i,
+      }));
+      const { error } = await supabase.from('contacts').insert(rows);
+      if (error) {
+        Alert.alert('저장 오류', error.message);
+      } else {
+        const skipCount = validContacts.length - newContacts.length;
+        const skipMsg = skipCount > 0 ? ` (중복 ${skipCount}개 제외)` : '';
+        Alert.alert('완료', `${rows.length}개 연락처를 가져왔습니다.${skipMsg}`);
+        await loadContacts();
+      }
+    } catch (e: any) {
+      Alert.alert('오류', e?.message ?? '연락처를 가져오는 중 오류가 발생했습니다.');
+    } finally {
+      setImporting(false);
     }
-    Alert.alert('연락처 가져오기', `기기에서 ${validContacts.length}개의 연락처를 찾았습니다.\n모두 가져올까요?`, [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '가져오기',
-        onPress: async () => {
-          const baseOrder = contacts.length;
-          const rows = validContacts.map((c, i) => ({
-            user_id: userId, name: c.resolvedName, phone: c.phoneNumbers?.[0]?.number ?? null, sort_order: baseOrder + i,
-          }));
-          const { error } = await supabase.from('contacts').insert(rows);
-          if (error) Alert.alert('오류', error.message);
-          else { Alert.alert('완료', `${rows.length}개 연락처를 가져왔습니다.`); loadContacts(); }
-        },
-      },
-    ]);
   };
 
   const deleteContact = (id: string, name: string) => {
@@ -156,8 +189,14 @@ export function ContactsPage({ onBack, userId }: Props) {
               </TouchableOpacity>
             ))}
           </View>
-          <TouchableOpacity style={styles.importBtn} onPress={importFromDevice}>
-            <Text style={styles.importBtnText}>📲 기기에서 가져오기</Text>
+          <TouchableOpacity
+            style={[styles.importBtn, importing && { opacity: 0.5 }]}
+            onPress={importFromDevice}
+            disabled={importing}
+          >
+            <Text style={styles.importBtnText}>
+              {importing ? '가져오는 중...' : '📲 기기에서 가져오기'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}

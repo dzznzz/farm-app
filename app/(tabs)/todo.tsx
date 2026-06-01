@@ -1,17 +1,29 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
 import { Toast, useToast } from '../../components/ui/Toast';
 import { TimePickerModal } from '../../components/modals/TimePickerModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowAlert: true,
+  }),
+});
 
 interface Todo {
   id: string;
@@ -42,19 +54,56 @@ function sortByTime(todos: Todo[]) {
   });
 }
 
+async function requestNotificationPermission(): Promise<boolean> {
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  if (existing === 'granted') return true;
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
+}
+
+async function scheduleAlarm(todoId: string, date: string, time: string, text: string) {
+  const [h, m] = time.split(':').map(Number);
+  const triggerDate = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
+  triggerDate.setMinutes(triggerDate.getMinutes() - 10);
+  if (triggerDate <= new Date()) return;
+  const id = await Notifications.scheduleNotificationAsync({
+    content: { title: '할 일 알림 (10분 후)', body: text, sound: true },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: triggerDate },
+  });
+  await AsyncStorage.setItem(`todo_alarm_${todoId}`, id);
+}
+
+async function cancelAlarm(todoId: string) {
+  const id = await AsyncStorage.getItem(`todo_alarm_${todoId}`);
+  if (id) {
+    await Notifications.cancelScheduledNotificationAsync(id);
+    await AsyncStorage.removeItem(`todo_alarm_${todoId}`);
+  }
+}
+
 export default function TodoScreen() {
   const { user } = useAuth();
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newText, setNewText] = useState('');
-  const [newTime, setNewTime] = useState('');
+  const [newTime, setNewTime] = useState('00:00');
+  const [newAlarm, setNewAlarm] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [editTime, setEditTime] = useState('');
+  const [editAlarm, setEditAlarm] = useState(false);
   const [showEditTimePicker, setShowEditTimePicker] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
+  const [showAlarmTooltip, setShowAlarmTooltip] = useState(false);
+  const [showEditAlarmTooltip, setShowEditAlarmTooltip] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      Notifications.getPermissionsAsync();
+    }
+  }, []);
 
   const load = async (d: string) => {
     if (!user) return;
@@ -77,42 +126,62 @@ export default function TodoScreen() {
 
   const handleAdd = async () => {
     const text = newText.trim();
-    if (!text || !user) return;
-    const time = newTime.trim() || null;
+    if (!text) { showToast('내용을 입력해주세요.'); return; }
+    if (!newTime.trim()) { showToast('시간을 선택해주세요.'); return; }
+    if (!user) return;
+
     const { data, error } = await supabase
       .from('todos')
-      .insert({ user_id: user.id, date, text, time, completed: false })
+      .insert({ user_id: user.id, date, text, time: newTime, completed: false })
       .select()
       .single();
     if (!error && data) {
+      if (newAlarm && Platform.OS !== 'web') {
+        const granted = await requestNotificationPermission();
+        if (granted) {
+          await scheduleAlarm(data.id, date, newTime, text);
+        }
+      }
       setTodos((prev) => sortByTime([...prev, data]));
       setNewText('');
-      setNewTime('');
+      setNewTime('00:00');
+      setNewAlarm(false);
       showToast('저장되었습니다.');
     }
   };
 
   const handleToggle = async (id: string, completed: boolean) => {
     await supabase.from('todos').update({ completed: !completed }).eq('id', id);
+    if (!completed) await cancelAlarm(id);
     setTodos((prev) => prev.map((t) => t.id === id ? { ...t, completed: !t.completed } : t));
   };
 
   const handleDelete = async (id: string) => {
     await supabase.from('todos').delete().eq('id', id);
+    await cancelAlarm(id);
     setTodos((prev) => prev.filter((t) => t.id !== id));
     showToast('삭제되었습니다.');
   };
 
-  const handleStartEdit = (todo: Todo) => {
+  const handleStartEdit = async (todo: Todo) => {
     setEditingId(todo.id);
     setEditText(todo.text);
     setEditTime(todo.time ?? '');
+    setShowEditAlarmTooltip(false);
+    // 기존에 알람이 설정돼 있으면 스위치를 ON 상태로 복원
+    if (Platform.OS !== 'web') {
+      const existingId = await AsyncStorage.getItem(`todo_alarm_${todo.id}`);
+      setEditAlarm(!!existingId);
+    } else {
+      setEditAlarm(false);
+    }
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditText('');
     setEditTime('');
+    setEditAlarm(false);
   };
 
   const handleSaveEdit = async () => {
@@ -123,12 +192,20 @@ export default function TodoScreen() {
       .update({ text: editText.trim(), time })
       .eq('id', editingId);
     if (!error) {
+      await cancelAlarm(editingId);
+      if (editAlarm && time && Platform.OS !== 'web') {
+        const granted = await requestNotificationPermission();
+        if (granted) {
+          await scheduleAlarm(editingId, date, time, editText.trim());
+        }
+      }
       setTodos((prev) => sortByTime(prev.map((t) =>
         t.id === editingId ? { ...t, text: editText.trim(), time } : t
       )));
       setEditingId(null);
       setEditText('');
       setEditTime('');
+      setEditAlarm(false);
       showToast('수정되었습니다.');
     }
   };
@@ -137,6 +214,7 @@ export default function TodoScreen() {
     const completedIds = todos.filter((t) => t.completed).map((t) => t.id);
     if (!completedIds.length) return;
     await supabase.from('todos').delete().in('id', completedIds);
+    await Promise.all(completedIds.map(cancelAlarm));
     setTodos((prev) => prev.filter((t) => !t.completed));
     showToast(`${completedIds.length}개 삭제되었습니다.`);
   };
@@ -216,6 +294,27 @@ export default function TodoScreen() {
                           <Text style={styles.editCancelBtnText}>취소</Text>
                         </TouchableOpacity>
                       </View>
+                      <View>
+                        <View style={styles.alarmRow}>
+                          <TouchableOpacity
+                            onPress={() => setShowEditAlarmTooltip((v) => !v)}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Text style={styles.alarmLabel}>🔔 알람 설정 (10분 전)</Text>
+                          </TouchableOpacity>
+                          <Switch
+                            value={editAlarm}
+                            onValueChange={setEditAlarm}
+                            trackColor={{ false: Colors.border, true: Colors.primaryLight }}
+                            thumbColor={editAlarm ? Colors.primary : Colors.textLight}
+                          />
+                        </View>
+                        {showEditAlarmTooltip && (
+                          <View style={styles.tooltipBox}>
+                            <Text style={styles.tooltipText}>지정한 시간의 10분 전 알람으로 알려드려요. ㅁ-ㅁ7</Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
                   ) : (
                     <>
@@ -260,16 +359,40 @@ export default function TodoScreen() {
               onSubmitEditing={handleAdd}
               returnKeyType="done"
             />
-            <TouchableOpacity style={styles.addTimeBtn} onPress={() => setShowTimePicker(true)}>
-              <Text style={[styles.addTimeBtnText, newTime ? styles.addTimeBtnActive : null]}>
-                {newTime ? `🕐 ${newTime}` : '⏰ 시간 선택'}
-              </Text>
-              {newTime ? (
-                <TouchableOpacity onPress={() => setNewTime('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={styles.addTimeClear}>✕</Text>
-                </TouchableOpacity>
-              ) : null}
-            </TouchableOpacity>
+            <View style={styles.addBottomRow}>
+              <TouchableOpacity style={styles.addTimeBtn} onPress={() => setShowTimePicker(true)}>
+                <Text style={[styles.addTimeBtnText, newTime ? styles.addTimeBtnActive : null]}>
+                  {newTime ? `🕐 ${newTime}` : '⏰ 시간 선택'}
+                </Text>
+                {newTime ? (
+                  <TouchableOpacity onPress={() => setNewTime('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.addTimeClear}>✕</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </TouchableOpacity>
+              <View>
+                <View style={styles.alarmToggle}>
+                  <TouchableOpacity
+                    onPress={() => setShowAlarmTooltip((v) => !v)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={styles.alarmSmallLabel}>🔔</Text>
+                  </TouchableOpacity>
+                  <Switch
+                    value={newAlarm}
+                    onValueChange={setNewAlarm}
+                    trackColor={{ false: Colors.border, true: Colors.primaryLight }}
+                    thumbColor={newAlarm ? Colors.primary : Colors.textLight}
+                    style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                  />
+                </View>
+                {showAlarmTooltip && (
+                  <View style={[styles.tooltipBox, styles.tooltipBoxBottom]}>
+                    <Text style={styles.tooltipText}>지정한 시간의 10분 전 알람으로 알려드려요. ㅁ-ㅁ7</Text>
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
           <TouchableOpacity
             style={[styles.addBtn, !newText.trim() && styles.addBtnDisabled]}
@@ -362,7 +485,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   deleteText: { color: Colors.danger, fontSize: 12, fontWeight: '600' },
-  // Edit mode
   editInput: {
     backgroundColor: Colors.background, borderRadius: Radius.md,
     paddingHorizontal: Spacing.sm, paddingVertical: 8,
@@ -389,6 +511,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   editCancelBtnText: { color: Colors.textSub, fontSize: 12, fontWeight: '600' },
+  alarmRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 6, paddingHorizontal: 2,
+  },
+  alarmLabel: { fontSize: 12, color: Colors.textSub },
   addBar: {
     flexDirection: 'row', gap: Spacing.sm,
     padding: Spacing.md, paddingBottom: Spacing.lg,
@@ -402,8 +529,9 @@ const styles = StyleSheet.create({
     paddingVertical: 11, fontSize: 15, color: Colors.text,
     borderWidth: 1, borderColor: Colors.border,
   },
+  addBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   addTimeBtn: {
-    backgroundColor: Colors.background,
+    flex: 1, backgroundColor: Colors.background,
     borderRadius: Radius.md, paddingHorizontal: Spacing.md,
     paddingVertical: 9, borderWidth: 1, borderColor: Colors.border,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -411,10 +539,21 @@ const styles = StyleSheet.create({
   addTimeBtnText: { fontSize: 13, color: Colors.textLight },
   addTimeBtnActive: { color: Colors.primary, fontWeight: '600' },
   addTimeClear: { fontSize: 13, color: Colors.textSub, paddingLeft: 8 },
+  alarmToggle: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  alarmSmallLabel: { fontSize: 16 },
   addBtn: {
     backgroundColor: Colors.primary, borderRadius: Radius.md,
     paddingHorizontal: Spacing.lg, justifyContent: 'center',
   },
   addBtnDisabled: { backgroundColor: Colors.border },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  tooltipBox: {
+    backgroundColor: Colors.text, borderRadius: Radius.md,
+    padding: Spacing.sm, marginTop: 4,
+  },
+  tooltipBoxBottom: {
+    backgroundColor: Colors.text, borderRadius: Radius.md,
+    padding: Spacing.sm, marginBottom: 4,
+  },
+  tooltipText: { fontSize: 12, color: '#fff', lineHeight: 18 },
 });
