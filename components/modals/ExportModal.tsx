@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal,
-  ActivityIndicator, Alert, Linking,
+  ActivityIndicator, Alert, Linking, Platform,
 } from 'react-native';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { fetchMonthlyExportData, createMonthlySpreadsheet } from '../../lib/googleSheets';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
-
-WebBrowser.maybeCompleteAuthSession();
 
 interface Props {
   visible: boolean;
@@ -26,11 +23,14 @@ export function ExportModal({ visible, onClose, userId }: Props) {
   const [exporting, setExporting] = useState(false);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
 
-  const [request, , promptAsync] = Google.useAuthRequest({
-    webClientId: WEB_CLIENT_ID || '__not_configured__',
-    iosClientId: IOS_CLIENT_ID || undefined,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: WEB_CLIENT_ID,
+      iosClientId: IOS_CLIENT_ID,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      offlineAccess: false,
+    });
+  }, []);
 
   useEffect(() => {
     if (!visible) { setSheetUrl(null); setExporting(false); }
@@ -38,15 +38,28 @@ export function ExportModal({ visible, onClose, userId }: Props) {
 
   const handleExport = async () => {
     if (!WEB_CLIENT_ID) {
-      Alert.alert('설정 필요', 'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID 환경변수를 설정해주세요.\n자세한 내용은 개발자에게 문의하세요.');
+      Alert.alert('설정 필요', 'Google 클라이언트 ID가 설정되지 않았습니다.');
       return;
     }
     setExporting(true);
     try {
-      const result = await promptAsync();
-      if (result.type !== 'success') { setExporting(false); return; }
+      // Android만 Play Services 확인
+      if (Platform.OS === 'android') {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      }
 
-      const accessToken = result.authentication?.accessToken;
+      // 이미 로그인된 경우 silent sign-in, 아닌 경우 인터랙티브 sign-in
+      let accessToken: string | null = null;
+      try {
+        await GoogleSignin.silentSignIn();
+        const tokens = await GoogleSignin.getTokens();
+        accessToken = tokens.accessToken;
+      } catch {
+        await GoogleSignin.signIn();
+        const tokens = await GoogleSignin.getTokens();
+        accessToken = tokens.accessToken;
+      }
+
       if (!accessToken) throw new Error('Google 인증 토큰을 가져오지 못했습니다.');
 
       const rows = await fetchMonthlyExportData(userId, year, month);
@@ -59,7 +72,15 @@ export function ExportModal({ visible, onClose, userId }: Props) {
       const url = await createMonthlySpreadsheet(accessToken, year, month, rows);
       setSheetUrl(url);
     } catch (e: any) {
-      Alert.alert('오류', e.message);
+      if (e.code === statusCodes.SIGN_IN_CANCELLED) {
+        // 사용자가 취소
+      } else if (e.code === statusCodes.IN_PROGRESS) {
+        Alert.alert('안내', '이미 로그인 진행 중입니다.');
+      } else if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        Alert.alert('오류', 'Google Play Services를 사용할 수 없습니다.');
+      } else {
+        Alert.alert('오류', e.message ?? '알 수 없는 오류가 발생했습니다.');
+      }
     }
     setExporting(false);
   };
@@ -106,9 +127,9 @@ export function ExportModal({ visible, onClose, userId }: Props) {
             </View>
           ) : (
             <TouchableOpacity
-              style={[styles.exportBtn, (exporting || !request) && styles.exportBtnDisabled]}
+              style={[styles.exportBtn, exporting && styles.exportBtnDisabled]}
               onPress={handleExport}
-              disabled={exporting || !request}
+              disabled={exporting}
             >
               {exporting ? (
                 <ActivityIndicator color="#fff" />
