@@ -107,10 +107,13 @@ export default function StatisticsScreen() {
     if (!user) return;
     fetchStats(p);
     setSummaryLoading(true);
-    const { curFrom, curTo } = getCurrentAndPrevRange(p);
+    // 단가 히스토리는 기간 탭과 무관하게 최근 30일 고정
+    const today = new Date().toISOString().split('T')[0];
+    const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+    const priceFrom = d30.toISOString().split('T')[0];
     const [result, prices] = await Promise.all([
       fetchPeriodSummary(user.id, p, selectedFarmId),
-      fetchPriceHistory(user.id, curFrom, curTo, selectedFarmId),
+      fetchPriceHistory(user.id, priceFrom, today, selectedFarmId),
     ]);
     setPeriodSummary(result);
     setPriceHistory(prices);
@@ -394,12 +397,12 @@ const styles = StyleSheet.create({
   farmChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSub },
   farmChipTextActive: { color: Colors.primaryDark },
   scroll: { flex: 1 },
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
-  summaryCard: { width: '48%', alignItems: 'center', paddingVertical: Spacing.md },
-  laborCard: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm },
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.md, paddingTop: Spacing.md },
+  summaryCard: { width: '50%', alignItems: 'center', paddingVertical: Spacing.md },
+  laborCard: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm },
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
-  chartCard: { margin: Spacing.lg, marginTop: Spacing.sm },
+  chartCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: 0 },
   chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   chartTypeTabs: { flexDirection: 'row', gap: 4 },
   chartTypeBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
@@ -409,7 +412,7 @@ const styles = StyleSheet.create({
   emptyChart: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { ...Typography.body, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4 },
-  compareCard: { marginHorizontal: Spacing.lg, marginTop: 0 },
+  compareCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
   compareRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: Spacing.xs },
   compareLabel: { ...Typography.body, flex: 1 },
   compareRight: { alignItems: 'flex-end', gap: 4 },
@@ -420,7 +423,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: Colors.border, alignItems: 'center',
   },
   compareDividerText: { ...Typography.caption, color: Colors.textLight },
-  stockCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.sm },
+  stockCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
   stockRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stockItem: { flex: 1, alignItems: 'center' },
   stockLabel: { ...Typography.caption, marginBottom: 4 },
@@ -430,14 +433,14 @@ const styles = StyleSheet.create({
   stockResultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   stockResultLabel: { ...Typography.bodyBold },
   stockResultValue: { fontSize: 22, fontWeight: '800' },
-  priceCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.sm },
+  priceCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
   priceRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 6 },
   priceDate: { ...Typography.caption, color: Colors.textSub, width: 36 },
   priceLabel: { ...Typography.caption, color: Colors.text, flex: 1 },
   priceValue: { ...Typography.bodyBold, color: Colors.primaryDark },
   breakdownBtn: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginHorizontal: Spacing.lg, marginTop: Spacing.sm,
+    marginHorizontal: Spacing.md, marginTop: Spacing.sm,
     backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
     padding: Spacing.md, borderWidth: 1, borderColor: Colors.primaryLight,
   },

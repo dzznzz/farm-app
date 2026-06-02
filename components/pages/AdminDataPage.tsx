@@ -46,7 +46,7 @@ export function AdminDataPage({ onBack, readOnly = false }: Props) {
       )}
 
       <View style={{ flex: 1 }} pointerEvents={readOnly ? 'none' : 'auto'}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+        <View style={styles.tabsRow}>
           {TABS.map((t) => (
             <TouchableOpacity
               key={t.key}
@@ -56,7 +56,7 @@ export function AdminDataPage({ onBack, readOnly = false }: Props) {
               <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
 
         {tab === 'crop' && <CropTab />}
         {tab === 'variety' && <VarietyTab />}
@@ -511,12 +511,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm,
   },
   readOnlyText: { fontSize: 13, fontWeight: '600', color: '#856404', textAlign: 'center' },
-  tabsScroll: { margin: Spacing.lg, marginBottom: 0 },
-  tabs: {
-    flexDirection: 'row', backgroundColor: Colors.border,
-    borderRadius: Radius.full, padding: 3,
+  tabsRow: {
+    flexDirection: 'row', margin: Spacing.lg, marginBottom: 0,
+    backgroundColor: Colors.border, borderRadius: Radius.full, padding: 3,
   },
-  tabBtn: { paddingVertical: 9, paddingHorizontal: 18, alignItems: 'center', borderRadius: Radius.full },
+  tabBtn: { flex: 1, paddingVertical: 9, paddingHorizontal: 18, alignItems: 'center', borderRadius: Radius.full },
   tabBtnActive: { backgroundColor: Colors.surface },
   tabText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
   tabTextActive: { color: Colors.primary },

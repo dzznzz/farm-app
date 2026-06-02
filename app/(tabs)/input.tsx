@@ -178,11 +178,14 @@ export default function InputScreen() {
                       </View>
                       <View style={styles.recordInfo}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          {r.farmName && (
-                            <View style={styles.farmBadge}>
-                              <Text style={styles.farmBadgeText}>{r.farmName}</Text>
-                            </View>
-                          )}
+                          {(() => {
+                            const fn = r.farmName ?? farms.find(f => f.id === r.farmId)?.name;
+                            return fn ? (
+                              <View style={styles.farmBadge}>
+                                <Text style={styles.farmBadgeText}>{fn}</Text>
+                              </View>
+                            ) : null;
+                          })()}
                           <Text style={styles.recordMain} numberOfLines={1}>
                             {[r.cropType, r.variety, r.size].filter(Boolean).join(' · ')}
                           </Text>
