@@ -66,12 +66,10 @@ export function ExportModal({ visible, onClose, userId }: Props) {
       let accessToken = result.authentication?.accessToken;
       if (!accessToken && result.params?.code) {
         const clientId = Platform.OS === 'ios' ? IOS_CLIENT_ID : ANDROID_CLIENT_ID;
-        // iOS/Android 네이티브 클라이언트의 reversed scheme redirect URI
-        const redirectUri = `com.googleusercontent.apps.${clientId.replace('.apps.googleusercontent.com', '')}:/oauthredirect`;
         const tokenResponse = await exchangeCodeAsync(
           {
             clientId,
-            redirectUri,
+            redirectUri: request!.redirectUri,
             code: result.params.code,
             extraParams: request?.codeVerifier ? { code_verifier: request.codeVerifier } : undefined,
           },

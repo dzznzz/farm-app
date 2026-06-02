@@ -52,7 +52,14 @@ export function ContactsPage({ onBack, userId }: Props) {
     setImporting(true);
     try {
       // 네이티브 연락처 피커 — 권한 없이 iOS 시스템 UI에서 직접 선택
-      const contact = await Contact.presentPicker();
+      const contact = await Contact.presentPicker({
+        fields: [
+          Contact.Fields.Name,
+          Contact.Fields.FirstName,
+          Contact.Fields.LastName,
+          Contact.Fields.PhoneNumbers,
+        ],
+      });
       if (!contact) return;
 
       const resolvedName =
