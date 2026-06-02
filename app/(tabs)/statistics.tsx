@@ -365,7 +365,7 @@ export default function StatisticsScreen() {
       {user && showBreakdown && (
         <BreakdownModal
           visible={showBreakdown} onClose={() => setShowBreakdown(false)}
-          userId={user.id} from={curFrom} to={curTo}
+          userId={user.id} from={curFrom} to={curTo} farmId={selectedFarmId}
         />
       )}
       {user && showExport && (

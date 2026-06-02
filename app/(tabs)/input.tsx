@@ -62,7 +62,7 @@ export default function InputScreen() {
         .select('id, date, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
       supabase.from('other_records')
-        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, type, recipient, note, created_at')
+        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, type, recipient, extra_cost, note, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
     ]);
 
@@ -91,6 +91,7 @@ export default function InputScreen() {
         cropType: r.crop_type, variety: r.variety, size: r.size,
         quantity: r.quantity, unit: r.unit, note: r.note,
         otherSubType: r.type, recipient: r.recipient,
+        extraCost: r.extra_cost,
       })),
     ];
 

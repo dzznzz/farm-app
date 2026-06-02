@@ -257,12 +257,13 @@ export async function fetchSummary(userId: string) {
 }
 
 export async function fetchBreakdown(
-  userId: string, from: string, to: string
+  userId: string, from: string, to: string, farmId?: string
 ): Promise<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[] }> {
+  const applyFarm = (q: any) => farmId ? q.eq('farm_id', farmId) : q;
   const [harvestRes, salesRes, otherRes] = await Promise.all([
-    supabase.from('harvest_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to),
-    supabase.from('sales_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to),
-    supabase.from('other_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to),
+    applyFarm(supabase.from('harvest_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to)),
+    applyFarm(supabase.from('sales_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to)),
+    applyFarm(supabase.from('other_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to)),
   ]);
 
   type Row = { crop_type?: string | null; variety?: string | null; size?: string | null; quantity: number };

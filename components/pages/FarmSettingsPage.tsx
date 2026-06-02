@@ -165,29 +165,6 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
     setShowAddrModal(false);
   };
 
-  const AddressField = ({ target }: { target: 'new' | 'edit' }) => {
-    const value = target === 'new' ? newAddress : editAddress;
-    const onChange = target === 'new' ? setNewAddress : setEditAddress;
-    return (
-      <SettingField label="주소">
-        <View style={styles.addrRow}>
-          <TextInput
-            style={[pageStyles.settingInput, { flex: 1 }]}
-            value={value}
-            onChangeText={onChange}
-            placeholder="선택사항"
-            placeholderTextColor={Colors.textLight}
-          />
-          {!!KAKAO_KEY && (
-            <TouchableOpacity style={styles.addrSearchBtn} onPress={() => openAddrSearch(target)}>
-              <Text style={styles.addrSearchBtnText}>검색</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </SettingField>
-    );
-  };
-
   return (
     <SafeAreaView style={pageStyles.container}>
       <View style={pageStyles.subHeader}>
@@ -221,7 +198,18 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
                       <TextInput style={pageStyles.settingInput} value={editArea} onChangeText={setEditArea}
                         keyboardType="decimal-pad" placeholder="선택사항" placeholderTextColor={Colors.textLight} />
                     </SettingField>
-                    <AddressField target="edit" />
+                    <SettingField label="주소">
+                      <View style={styles.addrRow}>
+                        <TextInput style={[pageStyles.settingInput, { flex: 1 }]}
+                          value={editAddress} onChangeText={setEditAddress}
+                          placeholder="선택사항" placeholderTextColor={Colors.textLight} />
+                        {!!KAKAO_KEY && (
+                          <TouchableOpacity style={styles.addrSearchBtn} onPress={() => openAddrSearch('edit')}>
+                            <Text style={styles.addrSearchBtnText}>검색</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </SettingField>
                     <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm }}>
                       <Button title="저장" onPress={saveEdit} loading={saving} style={{ flex: 1 }} />
                       <TouchableOpacity style={pageStyles.cancelBtn} onPress={() => setEditId(null)}>
@@ -277,7 +265,18 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
                   <TextInput style={pageStyles.settingInput} value={newArea} onChangeText={setNewArea}
                     keyboardType="decimal-pad" placeholder="선택사항" placeholderTextColor={Colors.textLight} />
                 </SettingField>
-                <AddressField target="new" />
+                <SettingField label="주소">
+                  <View style={styles.addrRow}>
+                    <TextInput style={[pageStyles.settingInput, { flex: 1 }]}
+                      value={newAddress} onChangeText={setNewAddress}
+                      placeholder="선택사항" placeholderTextColor={Colors.textLight} />
+                    {!!KAKAO_KEY && (
+                      <TouchableOpacity style={styles.addrSearchBtn} onPress={() => openAddrSearch('new')}>
+                        <Text style={styles.addrSearchBtnText}>검색</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </SettingField>
                 <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm }}>
                   <Button title="추가" onPress={addFarm} loading={saving} style={{ flex: 1 }} />
                   <TouchableOpacity style={pageStyles.cancelBtn} onPress={() => setAddMode(false)}>
@@ -345,6 +344,7 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
             <FlatList
               data={addrResults}
               keyExtractor={(_, i) => String(i)}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.addrResultItem} onPress={() => selectAddr(item)}>
                   {!!item.place_name && (

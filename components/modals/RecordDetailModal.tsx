@@ -51,6 +51,9 @@ export function RecordDetailModal({ visible, record, onClose, onDeleted, onEdit 
               : record.type === 'sales' ? 'sales_records' : 'other_records';
             const { error } = await supabase.from(table).delete().eq('id', record.id);
             if (error) { Alert.alert('오류', error.message); return; }
+            if (record.type === 'harvest') {
+              await supabase.from('labor_records').delete().eq('date', record.date);
+            }
             onDeleted();
             onClose();
           },
@@ -92,7 +95,7 @@ export function RecordDetailModal({ visible, record, onClose, onDeleted, onEdit 
                 <Row label="매출" value={`${record.totalRevenue.toLocaleString()}원`} />}
               {record.type === 'sales' && (record.commissionAmount ?? 0) > 0 &&
                 <Row label="수수료" value={`${record.commissionAmount!.toLocaleString()}원`} />}
-              {record.type === 'sales' && (record.extraCost ?? 0) > 0 &&
+              {(record.type === 'sales' || record.type === 'other') && (record.extraCost ?? 0) > 0 &&
                 <Row label="부수비용" value={`${record.extraCost!.toLocaleString()}원`} />}
               {record.type === 'sales' && record.buyer && <Row label="구매자" value={record.buyer} />}
               {record.type === 'other' && record.recipient && <Row label="받는 분" value={record.recipient} />}

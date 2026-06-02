@@ -152,7 +152,7 @@ export default function HomeScreen() {
           <Card style={styles.todoCard}>
             {todos.length === 0 ? (
               <TouchableOpacity onPress={() => router.push('/(tabs)/todo' as any)}>
-                <Text style={styles.todoEmpty}>할 일이 없어요. 탭해서 추가하세요.</Text>
+                <Text style={styles.todoEmpty}>아직 할 일이 등록되지 않았어요. ㅁ-ㅁ7</Text>
               </TouchableOpacity>
             ) : (
               <>
