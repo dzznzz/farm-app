@@ -294,7 +294,7 @@ export default function TodoScreen() {
                           <Text style={styles.editCancelBtnText}>취소</Text>
                         </TouchableOpacity>
                       </View>
-                      <View>
+                      <View style={styles.alarmTooltipWrapper}>
                         <View style={styles.alarmRow}>
                           <TouchableOpacity
                             onPress={() => setShowEditAlarmTooltip((v) => !v)}
@@ -310,8 +310,8 @@ export default function TodoScreen() {
                           />
                         </View>
                         {showEditAlarmTooltip && (
-                          <View style={styles.tooltipBox}>
-                            <Text style={styles.tooltipText}>지정한 시간의 10분 전 알람으로 알려드려요. ㅁ-ㅁ7</Text>
+                          <View style={styles.tooltipFloating}>
+                            <Text style={styles.tooltipText}>10분 전에 알람을 보내드려요. ㅁ-ㅁ7</Text>
                           </View>
                         )}
                       </View>
@@ -370,7 +370,7 @@ export default function TodoScreen() {
                   </TouchableOpacity>
                 ) : null}
               </TouchableOpacity>
-              <View>
+              <View style={styles.alarmTooltipWrapper}>
                 <View style={styles.alarmToggle}>
                   <TouchableOpacity
                     onPress={() => setShowAlarmTooltip((v) => !v)}
@@ -387,7 +387,7 @@ export default function TodoScreen() {
                   />
                 </View>
                 {showAlarmTooltip && (
-                  <View style={[styles.tooltipBox, styles.tooltipBoxBottom]}>
+                  <View style={styles.tooltipFloating}>
                     <Text style={styles.tooltipText}>지정한 시간의 10분 전 알람으로 알려드려요. ㅁ-ㅁ7</Text>
                   </View>
                 )}
@@ -547,13 +547,17 @@ const styles = StyleSheet.create({
   },
   addBtnDisabled: { backgroundColor: Colors.border },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  tooltipBox: {
-    backgroundColor: Colors.text, borderRadius: Radius.md,
-    padding: Spacing.sm, marginTop: 4,
-  },
-  tooltipBoxBottom: {
-    backgroundColor: Colors.text, borderRadius: Radius.md,
-    padding: Spacing.sm, marginBottom: 4,
+  alarmTooltipWrapper: { position: 'relative' },
+  tooltipFloating: {
+    position: 'absolute',
+    bottom: '100%',
+    right: 0,
+    width: 230,
+    backgroundColor: Colors.text,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: 6,
+    zIndex: 200,
   },
   tooltipText: { fontSize: 12, color: '#fff', lineHeight: 18 },
 });

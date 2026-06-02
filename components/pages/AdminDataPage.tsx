@@ -18,9 +18,9 @@ interface SizeItem { id: string; crop_type: string; name: string; range_info: st
 interface UnitItem { id: string; name: string; sort_order: number }
 interface ExpenseItem { id: string; name: string; sort_order: number }
 
-interface Props { onBack: () => void }
+interface Props { onBack: () => void; readOnly?: boolean }
 
-export function AdminDataPage({ onBack }: Props) {
+export function AdminDataPage({ onBack, readOnly = false }: Props) {
   const [tab, setTab] = useState<AdminTab>('crop');
 
   const TABS: { key: AdminTab; label: string }[] = [
@@ -39,23 +39,31 @@ export function AdminDataPage({ onBack }: Props) {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-        {TABS.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.tabBtn, tab === t.key && styles.tabBtnActive]}
-            onPress={() => setTab(t.key)}
-          >
-            <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {readOnly && (
+        <View style={styles.readOnlyBanner}>
+          <Text style={styles.readOnlyText}>🖥️ PC에서만 수정이 가능합니다. 조회만 가능합니다.</Text>
+        </View>
+      )}
 
-      {tab === 'crop' && <CropTab />}
-      {tab === 'variety' && <VarietyTab />}
-      {tab === 'size' && <SizeTab />}
-      {tab === 'unit' && <UnitTab />}
-      {tab === 'expense' && <ExpenseTab />}
+      <View style={{ flex: 1 }} pointerEvents={readOnly ? 'none' : 'auto'}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+          {TABS.map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tabBtn, tab === t.key && styles.tabBtnActive]}
+              onPress={() => setTab(t.key)}
+            >
+              <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {tab === 'crop' && <CropTab />}
+        {tab === 'variety' && <VarietyTab />}
+        {tab === 'size' && <SizeTab />}
+        {tab === 'unit' && <UnitTab />}
+        {tab === 'expense' && <ExpenseTab />}
+      </View>
     </SafeAreaView>
   );
 }
@@ -498,6 +506,11 @@ function ExpenseTab() {
 }
 
 const styles = StyleSheet.create({
+  readOnlyBanner: {
+    backgroundColor: '#FFF3CD', borderBottomWidth: 1, borderBottomColor: '#FFD700',
+    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm,
+  },
+  readOnlyText: { fontSize: 13, fontWeight: '600', color: '#856404', textAlign: 'center' },
   tabsScroll: { margin: Spacing.lg, marginBottom: 0 },
   tabs: {
     flexDirection: 'row', backgroundColor: Colors.border,

@@ -40,14 +40,14 @@ export default function InputScreen() {
   const [tab, setTab] = useState<TabType>('harvest');
   const [records, setRecords] = useState<DisplayRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string }[]>([]);
+  const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string; is_primary: boolean }[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<DisplayRecord | null>(null);
   const [editRecord, setEditRecord] = useState<DisplayRecord | undefined>(undefined);
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('farms').select('id, name, crop_type').eq('user_id', user.id)
+    supabase.from('farms').select('id, name, crop_type, is_primary').eq('user_id', user.id)
       .then(({ data }) => { if (data?.length) setFarms(data); });
   }, [user]);
 

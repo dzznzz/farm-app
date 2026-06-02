@@ -4,7 +4,7 @@ import {
   Alert, ActivityIndicator, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { presentContactPickerAsync } from 'expo-contacts';
+import { Contact } from 'expo-contacts';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -52,12 +52,13 @@ export function ContactsPage({ onBack, userId }: Props) {
     setImporting(true);
     try {
       // 네이티브 연락처 피커 — 권한 없이 iOS 시스템 UI에서 직접 선택
-      const contact = await presentContactPickerAsync() as any;
+      const contact = await Contact.presentPicker();
       if (!contact) return;
 
-      const resolvedName: string =
+      const resolvedName =
         contact.name ||
-        [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
+        [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() ||
+        '';
 
       if (!resolvedName) {
         Alert.alert('안내', '이름이 없는 연락처입니다.');

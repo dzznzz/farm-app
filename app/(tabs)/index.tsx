@@ -122,7 +122,7 @@ export default function HomeScreen() {
         <LinearGradient colors={[Colors.primaryUltraLight, Colors.background]} style={styles.headerGradient}>
           <View style={styles.header}>
             <View>
-              <Text style={styles.greeting}>{greeting} 👋</Text>
+              <Text style={styles.greeting}>{greeting}</Text>
               <Text style={styles.name}>{profile?.name ?? '농장주'}님</Text>
               <Text style={styles.region}>📍 {profile?.region ?? '지역 미설정'}</Text>
             </View>

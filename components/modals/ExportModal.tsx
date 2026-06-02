@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Alert, Linking, Platform,
 } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
+import { exchangeCodeAsync } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { fetchMonthlyExportData, createMonthlySpreadsheet } from '../../lib/googleSheets';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
@@ -16,6 +17,7 @@ interface Props {
   userId: string;
 }
 
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
 // app.json의 iosUrlScheme에서 파생 — iOS OAuth 앱 클라이언트 (커스텀 스킴 리다이렉트 지원)
 const IOS_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
@@ -29,11 +31,14 @@ export function ExportModal({ visible, onClose, userId }: Props) {
   const [exporting, setExporting] = useState(false);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
 
-  // WEB 클라이언트 타입은 커스텀 스킴 리다이렉트 불가 → iOS/Android 전용 클라이언트만 사용
-  const [, , promptAsync] = Google.useAuthRequest({
+  // 네이티브(iOS/Android): 플랫폼 전용 클라이언트 사용 (커스텀 스킴 리다이렉트)
+  // 웹: clientId 사용 (HTTPS 리다이렉트, 커스텀 스킴 문제 없음)
+  const [request, , promptAsync] = Google.useAuthRequest({
+    clientId: WEB_CLIENT_ID || undefined,
     iosClientId: IOS_CLIENT_ID,
     androidClientId: ANDROID_CLIENT_ID || undefined,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    extraParams: { prompt: 'select_account' },
   });
 
   useEffect(() => {
@@ -57,7 +62,23 @@ export function ExportModal({ visible, onClose, userId }: Props) {
       }
       if (result.type !== 'success') return;
 
-      const accessToken = result.authentication?.accessToken;
+      // expo-auth-session v5는 자동 토큰 교환을 하지 않으므로 수동 교환
+      let accessToken = result.authentication?.accessToken;
+      if (!accessToken && result.params?.code) {
+        const clientId = Platform.OS === 'ios' ? IOS_CLIENT_ID : ANDROID_CLIENT_ID;
+        // iOS/Android 네이티브 클라이언트의 reversed scheme redirect URI
+        const redirectUri = `com.googleusercontent.apps.${clientId.replace('.apps.googleusercontent.com', '')}:/oauthredirect`;
+        const tokenResponse = await exchangeCodeAsync(
+          {
+            clientId,
+            redirectUri,
+            code: result.params.code,
+            extraParams: request?.codeVerifier ? { code_verifier: request.codeVerifier } : undefined,
+          },
+          { tokenEndpoint: 'https://oauth2.googleapis.com/token' },
+        );
+        accessToken = tokenResponse.accessToken;
+      }
       if (!accessToken) throw new Error('액세스 토큰을 받지 못했습니다.');
 
       const rows = await fetchMonthlyExportData(userId, year, month);
@@ -105,7 +126,7 @@ export function ExportModal({ visible, onClose, userId }: Props) {
           </View>
 
           <Text style={styles.infoText}>
-            포함 항목: 일자·작물·품종·사이즈·수확량·판매량·매출·수수료·부수비용·순수익·기타수량
+            포함 항목: 일자·농장·작물·품종·사이즈·수확량·판매량·매출·수수료·부수비용·순수익·기타수량
           </Text>
 
           {sheetUrl ? (

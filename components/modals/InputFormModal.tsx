@@ -11,7 +11,7 @@ import { DisplayRecord } from './RecordDetailModal';
 type TabType = 'harvest' | 'sales' | 'other';
 type OtherType = 'gift' | 'waste';
 
-interface Farm { id: string; name: string; crop_type: string }
+interface Farm { id: string; name: string; crop_type: string; is_primary?: boolean }
 interface Entry { variety: string; size: string; quantity: string; unit: string }
 interface WorkerEntry { name: string; hours: string; cost: string }
 interface SizeInfo { name: string; range: string }
@@ -30,14 +30,14 @@ const BLUEBERRY_SIZES = ['대', '특', '왕특', '왕왕특'];
 const DEFAULT_UNITS = ['kg', '박스'];
 
 function getStepIds(tab: TabType): string[] {
-  if (tab === 'harvest') return ['date', 'crop', 'entries'];
-  if (tab === 'sales')   return ['date', 'crop', 'entries', 'price'];
-  return                        ['date', 'otherType', 'crop', 'entries'];
+  if (tab === 'harvest') return ['date', 'farm', 'crop', 'entries'];
+  if (tab === 'sales')   return ['date', 'farm', 'crop', 'entries', 'price'];
+  return                        ['date', 'farm', 'otherType', 'crop', 'entries'];
 }
 
 function getStepLabel(id: string, tab: TabType): string {
   const map: Record<string, string> = {
-    date: '날짜', crop: '작물', otherType: '구분',
+    date: '날짜', farm: '농장', crop: '작물', otherType: '구분',
     entries: tab === 'harvest' ? '수확 내역' : tab === 'sales' ? '판매 내역' : '수량 내역',
     price: '단가 (원)',
   };
@@ -55,8 +55,9 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
 
   // Base fields
   const [date, setDate] = useState(today);
-  const [farmId, setFarmId] = useState(farms[0]?.id ?? '');
-  const [cropType, setCropType] = useState(farms[0]?.crop_type ?? '블루베리');
+  const primaryFarm = farms.find(f => f.is_primary) ?? farms[0];
+  const [farmId, setFarmId] = useState(primaryFarm?.id ?? '');
+  const [cropType, setCropType] = useState(primaryFarm?.crop_type ?? '블루베리');
   const [otherType, setOtherType] = useState<OtherType>('gift');
 
   // Multi-entry (create mode)
@@ -106,7 +107,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
 
   const reset = () => {
     setActiveStep(0);
-    setDate(today); setFarmId(farms[0]?.id ?? ''); setCropType(farms[0]?.crop_type ?? '블루베리');
+    const pFarm = farms.find(f => f.is_primary) ?? farms[0];
+    setDate(today); setFarmId(pFarm?.id ?? ''); setCropType(pFarm?.crop_type ?? '블루베리');
     setOtherType('gift'); setEntries([]);
     setNewVariety(''); setNewSize(''); setCustomSizeMode(false); setNewQty(''); setNewUnit('kg');
     setEntryError(''); setShowSizeInfo(false);
@@ -136,6 +138,15 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     }
   }, [visible, editRecord]);
 
+  // 모달 열릴 때 / farms 로드될 때 대표 농장 기본 선택 (등록·수정 공통)
+  useEffect(() => {
+    if (visible && !farmId && farms.length > 0) {
+      const pFarm = farms.find(f => f.is_primary) ?? farms[0];
+      setFarmId(pFarm.id);
+      if (!isEdit && pFarm.crop_type) setCropType(pFarm.crop_type);
+    }
+  }, [visible, farms]);
+
   useEffect(() => {
     if (!visible) return;
     supabase.from('harvest_units').select('name').order('sort_order').then(({ data }) => {
@@ -161,7 +172,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
 
   // ── Step helpers ──
   const isStepValid = (id: string): boolean => {
-    if (id === 'date' || id === 'otherType') return true;
+    if (id === 'date' || id === 'otherType' || id === 'farm') return true;
     if (id === 'crop') return !!cropType.trim();
     if (id === 'entries') return entries.length > 0;
     if (id === 'price') return !!pricePerUnit.trim() && !isNaN(parseFloat(pricePerUnit));
@@ -233,7 +244,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
 
         if (editRecord.type === 'harvest') {
           await supabase.from('harvest_records').update({
-            date, crop_type: cropType || null,
+            farm_id: farmId || null, date, crop_type: cropType || null,
             variety: editVariety || null, size: editSize || null,
             quantity: qty, unit: editUnit || null, note: note || null,
           }).eq('id', editRecord.id).throwOnError();
@@ -244,7 +255,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           const eCost = parseFloat(extraCost) || 0;
           const rev = qty * price;
           await supabase.from('sales_records').update({
-            date, crop_type: cropType || null,
+            farm_id: farmId || null, date, crop_type: cropType || null,
             variety: editVariety || null, size: editSize || null,
             quantity: qty, price_per_unit: price, total_revenue: rev,
             commission_rate: cRate, commission_amount: rev * cRate / 100,
@@ -254,7 +265,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         } else {
           const eCost = parseFloat(otherExtraCost) || 0;
           await supabase.from('other_records').update({
-            date, crop_type: cropType || null,
+            farm_id: farmId || null, date, crop_type: cropType || null,
             variety: editVariety || null, size: editSize || null,
             quantity: qty, unit: editUnit || null,
             type: otherType,
@@ -482,18 +493,28 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           {isEdit ? (
             /* ═══ EDIT MODE: same rich form as create ═══ */
             <>
-              {/* 날짜 + 농장 */}
+              {/* 날짜 */}
               <SectionCard label="날짜">
                 <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
                   <Text style={styles.fieldBtnText}>📅 {date}</Text>
                 </TouchableOpacity>
-                {farms.length > 0 && (
+              </SectionCard>
+
+              {/* 농장 */}
+              <SectionCard label="농장">
+                {farms.length === 0 ? (
+                  <Text style={[styles.formLabel, { color: Colors.textSub }]}>
+                    등록된 농장이 없습니다. 더보기 → 농장 설정에서 추가하세요.
+                  </Text>
+                ) : (
                   <View style={styles.chipRow}>
                     {farms.map((f) => (
                       <TouchableOpacity key={f.id}
                         style={[styles.chip, farmId === f.id && styles.chipActive]}
                         onPress={() => { setFarmId(f.id); if (f.crop_type) setCropType(f.crop_type); }}>
-                        <Text style={[styles.chipText, farmId === f.id && styles.chipTextActive]}>{f.name}</Text>
+                        <Text style={[styles.chipText, farmId === f.id && styles.chipTextActive]}>
+                          {f.name}{f.is_primary ? ' ★' : ''}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -663,22 +684,28 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                     <View style={styles.stepBody}>
                       {/* DATE */}
                       {stepId === 'date' && (
-                        <>
-                          <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
-                            <Text style={styles.fieldBtnText}>📅 {date}</Text>
-                          </TouchableOpacity>
-                          {farms.length > 0 && (
-                            <View style={styles.chipRow}>
-                              {farms.map((f) => (
-                                <TouchableOpacity key={f.id}
-                                  style={[styles.chip, farmId === f.id && styles.chipActive]}
-                                  onPress={() => { setFarmId(f.id); if (f.crop_type) setCropType(f.crop_type); }}>
-                                  <Text style={[styles.chipText, farmId === f.id && styles.chipTextActive]}>{f.name}</Text>
-                                </TouchableOpacity>
-                              ))}
-                            </View>
-                          )}
-                        </>
+                        <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
+                          <Text style={styles.fieldBtnText}>📅 {date}</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* FARM */}
+                      {stepId === 'farm' && (
+                        farms.length === 0 ? (
+                          <Text style={[styles.formLabel, { color: Colors.textSub }]}>등록된 농장이 없습니다. 더보기 → 농장 설정에서 추가하세요.</Text>
+                        ) : (
+                          <View style={styles.chipRow}>
+                            {farms.map((f) => (
+                              <TouchableOpacity key={f.id}
+                                style={[styles.chip, farmId === f.id && styles.chipActive]}
+                                onPress={() => { setFarmId(f.id); if (f.crop_type) setCropType(f.crop_type); }}>
+                                <Text style={[styles.chipText, farmId === f.id && styles.chipTextActive]}>
+                                  {f.name}{f.is_primary ? ' ★' : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )
                       )}
 
                       {/* OTHERTYPE */}

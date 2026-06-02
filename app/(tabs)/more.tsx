@@ -37,14 +37,14 @@ export default function MoreScreen() {
       .then(({ data }) => { if (data?.role) setUserRole(data.role); });
   }, [user]);
 
-  const isAdmin = userRole === 'admin' && !isMobile;
+  const isAdmin = userRole === 'admin';
 
   if (page === 'chatbot') return <ChatbotPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'harvest') return <HarvestPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'farmSettings') return <FarmSettingsPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'profileEdit') return <ProfileEditPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'contacts') return <ContactsPage onBack={() => setPage('menu')} userId={user?.id} />;
-  if (page === 'adminData') return <AdminDataPage onBack={() => setPage('menu')} />;
+  if (page === 'adminData') return <AdminDataPage onBack={() => setPage('menu')} readOnly={isMobile} />;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -93,7 +93,7 @@ export default function MoreScreen() {
 
         {isAdmin && (
           <Card style={styles.adminMenuCard}>
-            <Text style={styles.adminBadge}>관리자 메뉴 · PC 전용</Text>
+            <Text style={styles.adminBadge}>관리자 메뉴{isMobile ? ' · PC에서만 수정 가능' : ''}</Text>
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => setPage('adminData')}
