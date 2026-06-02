@@ -56,24 +56,29 @@ export default function InputScreen() {
     setLoading(true);
     const [hRes, sRes, oRes] = await Promise.all([
       supabase.from('harvest_records')
-        .select('id, date, crop_type, variety, size, quantity, unit, note, created_at')
+        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, note, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
       supabase.from('sales_records')
-        .select('id, date, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, created_at')
+        .select('id, date, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
       supabase.from('other_records')
-        .select('id, date, crop_type, variety, size, quantity, unit, type, recipient, note, created_at')
+        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, type, recipient, note, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
     ]);
+
+    const getFarmName = (farmId: string | null) =>
+      farms.find(f => f.id === farmId)?.name ?? null;
 
     const combined: DisplayRecord[] = [
       ...(hRes.data ?? []).map((r: any): DisplayRecord => ({
         id: r.id, type: 'harvest', date: r.date,
+        farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
         quantity: r.quantity, unit: r.unit, note: r.note,
       })),
       ...(sRes.data ?? []).map((r: any): DisplayRecord => ({
         id: r.id, type: 'sales', date: r.date,
+        farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
         quantity: r.quantity, unit: null,
         pricePerUnit: r.price_per_unit, totalRevenue: r.total_revenue,
@@ -82,6 +87,7 @@ export default function InputScreen() {
       })),
       ...(oRes.data ?? []).map((r: any): DisplayRecord => ({
         id: r.id, type: 'other', date: r.date,
+        farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
         quantity: r.quantity, unit: r.unit, note: r.note,
         otherSubType: r.type, recipient: r.recipient,
@@ -171,9 +177,16 @@ export default function InputScreen() {
                         <Text style={[styles.typeBadgeText, { color: lbl.color }]}>{lbl.text}</Text>
                       </View>
                       <View style={styles.recordInfo}>
-                        <Text style={styles.recordMain} numberOfLines={1}>
-                          {[r.cropType, r.variety, r.size].filter(Boolean).join(' · ')}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {r.farmName && (
+                            <View style={styles.farmBadge}>
+                              <Text style={styles.farmBadgeText}>{r.farmName}</Text>
+                            </View>
+                          )}
+                          <Text style={styles.recordMain} numberOfLines={1}>
+                            {[r.cropType, r.variety, r.size].filter(Boolean).join(' · ')}
+                          </Text>
+                        </View>
                         <Text style={styles.recordSub}>
                           {r.quantity} {r.unit ?? 'kg'}
                           {r.type === 'sales' && r.totalRevenue
@@ -254,6 +267,11 @@ const styles = StyleSheet.create({
   emptySubText: { ...Typography.caption, marginTop: 6, color: Colors.textLight },
   recordCard: { marginBottom: Spacing.sm, padding: 0, overflow: 'hidden' },
   recordRow: { flexDirection: 'row', alignItems: 'center', padding: Spacing.md, gap: Spacing.sm },
+  farmBadge: {
+    backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.full,
+    paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: Colors.primaryLight,
+  },
+  farmBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.primaryDark },
   typeBadge: {
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full,
     alignSelf: 'flex-start',

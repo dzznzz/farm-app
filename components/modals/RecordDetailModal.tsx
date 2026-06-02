@@ -8,6 +8,8 @@ export interface DisplayRecord {
   id: string;
   type: RecordType;
   date: string;
+  farmId?: string | null;
+  farmName?: string | null;
   cropType: string | null;
   variety: string | null;
   size: string | null;
@@ -79,6 +81,7 @@ export function RecordDetailModal({ visible, record, onClose, onDeleted, onEdit 
           <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
             <View style={styles.rows}>
               <Row label="날짜" value={record.date} />
+              {record.farmName && <Row label="농장" value={record.farmName} />}
               {record.cropType && <Row label="작물" value={record.cropType} />}
               {record.variety && <Row label="품종" value={record.variety} />}
               {record.size && <Row label="사이즈" value={record.size} />}

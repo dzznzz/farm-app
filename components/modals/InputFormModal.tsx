@@ -135,6 +135,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
       setExtraCost(editRecord.extraCost != null ? String(editRecord.extraCost) : '');
       setBuyer(editRecord.buyer ?? '');
       setRecipient(editRecord.recipient ?? '');
+      if (editRecord.farmId) setFarmId(editRecord.farmId);
     }
   }, [visible, editRecord]);
 

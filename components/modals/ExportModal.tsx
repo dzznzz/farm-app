@@ -81,13 +81,13 @@ export function ExportModal({ visible, onClose, userId }: Props) {
       }
       if (!accessToken) throw new Error('액세스 토큰을 받지 못했습니다.');
 
-      const rows = await fetchMonthlyExportData(userId, year, month);
+      const { rows, laborTotal } = await fetchMonthlyExportData(userId, year, month);
       if (rows.length === 0) {
         Alert.alert('데이터 없음', `${year}년 ${month}월에 기록된 데이터가 없습니다.`);
         return;
       }
 
-      const url = await createMonthlySpreadsheet(accessToken, year, month, rows);
+      const url = await createMonthlySpreadsheet(accessToken, year, month, rows, laborTotal);
       setSheetUrl(url);
     } catch (e: any) {
       Alert.alert('오류', e?.message ?? '알 수 없는 오류가 발생했습니다.');

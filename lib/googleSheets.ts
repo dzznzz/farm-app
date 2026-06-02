@@ -17,17 +17,23 @@ export interface ExportRow {
   other: number;
 }
 
-export async function fetchMonthlyExportData(userId: string, year: number, month: number): Promise<ExportRow[]> {
+export async function fetchMonthlyExportData(
+  userId: string, year: number, month: number
+): Promise<{ rows: ExportRow[]; laborTotal: number }> {
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const to = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
 
-  const [harvestRes, salesRes, otherRes, farmsRes] = await Promise.all([
+  const [harvestRes, salesRes, otherRes, farmsRes, laborRes] = await Promise.all([
     supabase.from('harvest_records').select('date, farm_id, crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to),
     supabase.from('sales_records').select('date, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost').eq('user_id', userId).gte('date', from).lte('date', to),
     supabase.from('other_records').select('date, farm_id, crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to),
     supabase.from('farms').select('id, name').eq('user_id', userId),
+    supabase.from('labor_records').select('labor_cost').eq('user_id', userId).gte('date', from).lte('date', to),
   ]);
+
+  const laborTotal = laborRes.error ? 0 :
+    (laborRes.data ?? []).reduce((s: number, r: any) => s + (r.labor_cost ?? 0), 0);
 
   const farmMap: Record<string, string> = {};
   (farmsRes.data ?? []).forEach((f: any) => { farmMap[f.id] = f.name; });
@@ -61,7 +67,7 @@ export async function fetchMonthlyExportData(userId: string, year: number, month
   (salesRes.data ?? []).forEach((r: any) => getOrCreate(r).sales.push(r));
   (otherRes.data ?? []).forEach((r: any) => getOrCreate(r).others.push(r));
 
-  return Array.from(grouped.entries())
+  const rows = Array.from(grouped.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([, g]) => {
       const harvestQty = g.harvests.reduce((s, r) => s + (r.quantity ?? 0), 0);
@@ -81,6 +87,8 @@ export async function fetchMonthlyExportData(userId: string, year: number, month
         other: otherQty,
       };
     });
+
+  return { rows, laborTotal };
 }
 
 // ── 스프레드시트 디자인 적용 ──────────────────────────────────────────────
@@ -183,6 +191,7 @@ export async function createMonthlySpreadsheet(
   year: number,
   month: number,
   rows: ExportRow[],
+  laborTotal: number = 0,
 ): Promise<string> {
   const title = `농장 ${year}년 ${month}월 데이터`;
 
@@ -199,6 +208,7 @@ export async function createMonthlySpreadsheet(
   const totalRevenue    = rows.reduce((s, r) => s + r.revenue, 0);
   const totalCommission = rows.reduce((s, r) => s + r.commission_amount, 0);
   const totalExtra      = rows.reduce((s, r) => s + r.extra_cost, 0);
+  const realNetProfit   = totalRevenue - totalCommission - totalExtra - laborTotal;
 
   const summary = [
     '', '', '', '', '월 합계',
@@ -209,9 +219,14 @@ export async function createMonthlySpreadsheet(
     '',
     totalCommission,
     totalExtra,
-    totalRevenue - totalCommission - totalExtra,
+    realNetProfit,
     rows.reduce((s, r) => s + r.other, 0),
   ];
+
+  // 인건비가 있는 경우 별도 행으로 표시
+  const laborRow = laborTotal > 0
+    ? ['', '', '', '', '※ 인건비', '', '', '', '', '', '', laborTotal, `−${laborTotal.toLocaleString()}원 차감됨`, '']
+    : null;
 
   const dataRows = rows.map((r) => [
     r.date, r.farm_name, r.crop_type, r.variety, r.size,
@@ -224,7 +239,7 @@ export async function createMonthlySpreadsheet(
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [header, ...dataRows, [], summary] }),
+      body: JSON.stringify({ values: [header, ...dataRows, [], summary, ...(laborRow ? [laborRow] : [])] }),
     },
   );
   if (!updateRes.ok) throw new Error('데이터 입력 실패: ' + (await updateRes.text()));

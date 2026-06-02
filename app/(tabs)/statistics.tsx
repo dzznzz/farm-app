@@ -7,7 +7,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { BarChart } from 'react-native-gifted-charts';
 import { useAuth } from '../../hooks/useAuth';
-import { useStats, getCurrentAndPrevRange, fetchPeriodSummary, PeriodSummary } from '../../hooks/useStats';
+import {
+  useStats, getCurrentAndPrevRange, fetchPeriodSummary,
+  fetchPriceHistory, PeriodSummary, PricePoint,
+} from '../../hooks/useStats';
+import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
 import { BreakdownModal } from '../../components/modals/BreakdownModal';
@@ -31,7 +35,6 @@ const COMPARE_LABELS: Record<PeriodType, { revenue: string; harvest: string }> =
 
 function groupStats(stats: DailyStat[], period: PeriodType): DailyStat[] {
   if (period === 'day') return stats;
-
   const map: Record<string, DailyStat> = {};
   stats.forEach((s) => {
     let key = s.date;
@@ -74,28 +77,47 @@ const EMPTY_SUMMARY: PeriodSummary = { harvest: 0, sales: 0, revenue: 0, netReve
 
 export default function StatisticsScreen() {
   const { user } = useAuth();
-  const { stats, loading, fetchStats } = useStats(user?.id);
   const { period: paramPeriod } = useLocalSearchParams<{ period?: string }>();
   const [period, setPeriod] = useState<PeriodType>((paramPeriod as PeriodType) ?? 'day');
   const [chartType, setChartType] = useState<'harvest' | 'revenue'>('harvest');
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showExport, setShowExport] = useState(false);
-  const [periodSummary, setPeriodSummary] = useState<{ current: PeriodSummary; previous: PeriodSummary }>({
-    current: EMPTY_SUMMARY,
-    previous: EMPTY_SUMMARY,
-  });
+
+  // 농장 필터
+  const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
+  const [selectedFarmId, setSelectedFarmId] = useState<string | undefined>(undefined);
+
+  const { stats, loading, fetchStats } = useStats(user?.id, selectedFarmId);
+
+  const [periodSummary, setPeriodSummary] = useState<{
+    current: PeriodSummary;
+    previous: PeriodSummary;
+    previousYear?: PeriodSummary;
+  }>({ current: EMPTY_SUMMARY, previous: EMPTY_SUMMARY });
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('farms').select('id, name').eq('user_id', user.id)
+      .then(({ data }) => setFarms(data ?? []));
+  }, [user]);
 
   const loadAll = useCallback(async (p: PeriodType) => {
     if (!user) return;
     fetchStats(p);
     setSummaryLoading(true);
-    const result = await fetchPeriodSummary(user.id, p);
+    const { curFrom, curTo } = getCurrentAndPrevRange(p);
+    const [result, prices] = await Promise.all([
+      fetchPeriodSummary(user.id, p, selectedFarmId),
+      fetchPriceHistory(user.id, curFrom, curTo, selectedFarmId),
+    ]);
     setPeriodSummary(result);
+    setPriceHistory(prices);
     setSummaryLoading(false);
-  }, [user, fetchStats]);
+  }, [user, fetchStats, selectedFarmId]);
 
-  useEffect(() => { loadAll(period); }, [period, user?.id]);
+  useEffect(() => { loadAll(period); }, [period, user?.id, selectedFarmId]);
 
   useEffect(() => {
     if (paramPeriod && ['day', 'week', 'month', 'year'].includes(paramPeriod)) {
@@ -115,16 +137,14 @@ export default function StatisticsScreen() {
 
   const cur = periodSummary.current;
   const prev = periodSummary.previous;
+  const py = periodSummary.previousYear;
   const labels = COMPARE_LABELS[period];
-
-  const revenueRate = prev.revenue > 0
-    ? ((cur.revenue - prev.revenue) / prev.revenue) * 100
-    : null;
-  const harvestRate = prev.harvest > 0
-    ? ((cur.harvest - prev.harvest) / prev.harvest) * 100
-    : null;
-
   const { curFrom, curTo } = getCurrentAndPrevRange(period);
+
+  const revenueRate = prev.revenue > 0 ? ((cur.revenue - prev.revenue) / prev.revenue) * 100 : null;
+  const harvestRate = prev.harvest > 0 ? ((cur.harvest - prev.harvest) / prev.harvest) * 100 : null;
+  const pyRevenueRate = py && py.revenue > 0 ? ((cur.revenue - py.revenue) / py.revenue) * 100 : null;
+  const pyHarvestRate = py && py.harvest > 0 ? ((cur.harvest - py.harvest) / py.harvest) * 100 : null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -141,6 +161,31 @@ export default function StatisticsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* 농장 필터 (2개 이상일 때만 표시) */}
+        {farms.length >= 2 && (
+          <ScrollView
+            horizontal showsHorizontalScrollIndicator={false}
+            style={styles.farmFilterScroll}
+            contentContainerStyle={styles.farmFilterContent}
+          >
+            <TouchableOpacity
+              style={[styles.farmChip, !selectedFarmId && styles.farmChipActive]}
+              onPress={() => setSelectedFarmId(undefined)}
+            >
+              <Text style={[styles.farmChipText, !selectedFarmId && styles.farmChipTextActive]}>전체</Text>
+            </TouchableOpacity>
+            {farms.map((f) => (
+              <TouchableOpacity
+                key={f.id}
+                style={[styles.farmChip, selectedFarmId === f.id && styles.farmChipActive]}
+                onPress={() => setSelectedFarmId(f.id)}
+              >
+                <Text style={[styles.farmChipText, selectedFarmId === f.id && styles.farmChipTextActive]}>{f.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </LinearGradient>
 
       <ScrollView style={styles.scroll}>
@@ -191,7 +236,6 @@ export default function StatisticsScreen() {
               ))}
             </View>
           </View>
-
           {loading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginVertical: 40 }} />
           ) : chartData.length > 0 && hasChartData ? (
@@ -199,11 +243,8 @@ export default function StatisticsScreen() {
               data={chartData}
               barWidth={chartData.length > 5 ? 24 : 32}
               spacing={chartData.length > 5 ? 10 : 16}
-              roundedTop
-              roundedBottom
-              hideRules
-              xAxisThickness={0}
-              yAxisThickness={0}
+              roundedTop roundedBottom hideRules
+              xAxisThickness={0} yAxisThickness={0}
               yAxisTextStyle={{ color: Colors.textSub, fontSize: 10 }}
               xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
               noOfSections={4}
@@ -221,31 +262,44 @@ export default function StatisticsScreen() {
         <Card style={styles.compareCard}>
           <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>기간 비교</Text>
 
-          {/* 매출 비교 */}
+          {/* 전기 대비 */}
           <View style={styles.compareRow}>
             <Text style={styles.compareLabel}>{labels.revenue}</Text>
             <View style={styles.compareRight}>
-              <Text style={styles.compareValues}>
-                {formatRevenue(cur.revenue)} / {formatRevenue(prev.revenue)}
-              </Text>
-              {revenueRate !== null
-                ? <StatBadge value={revenueRate} />
-                : <Text style={styles.noDataText}>이전 데이터 없음</Text>}
+              <Text style={styles.compareValues}>{formatRevenue(cur.revenue)} / {formatRevenue(prev.revenue)}</Text>
+              {revenueRate !== null ? <StatBadge value={revenueRate} /> : <Text style={styles.noDataText}>이전 데이터 없음</Text>}
             </View>
           </View>
-
-          {/* 수확량 비교 */}
           <View style={[styles.compareRow, { marginTop: Spacing.sm }]}>
             <Text style={styles.compareLabel}>{labels.harvest}</Text>
             <View style={styles.compareRight}>
-              <Text style={styles.compareValues}>
-                {formatHarvest(cur.harvest)} / {formatHarvest(prev.harvest)}
-              </Text>
-              {harvestRate !== null
-                ? <StatBadge value={harvestRate} />
-                : <Text style={styles.noDataText}>이전 데이터 없음</Text>}
+              <Text style={styles.compareValues}>{formatHarvest(cur.harvest)} / {formatHarvest(prev.harvest)}</Text>
+              {harvestRate !== null ? <StatBadge value={harvestRate} /> : <Text style={styles.noDataText}>이전 데이터 없음</Text>}
             </View>
           </View>
+
+          {/* 작년 동월 비교 (월별 모드에서만 표시) */}
+          {period === 'month' && py && (
+            <>
+              <View style={styles.compareDivider}>
+                <Text style={styles.compareDividerText}>작년 동월 비교</Text>
+              </View>
+              <View style={styles.compareRow}>
+                <Text style={styles.compareLabel}>작년 동월 매출</Text>
+                <View style={styles.compareRight}>
+                  <Text style={styles.compareValues}>{formatRevenue(cur.revenue)} / {formatRevenue(py.revenue)}</Text>
+                  {pyRevenueRate !== null ? <StatBadge value={pyRevenueRate} /> : <Text style={styles.noDataText}>데이터 없음</Text>}
+                </View>
+              </View>
+              <View style={[styles.compareRow, { marginTop: Spacing.sm }]}>
+                <Text style={styles.compareLabel}>작년 동월 수확량</Text>
+                <View style={styles.compareRight}>
+                  <Text style={styles.compareValues}>{formatHarvest(cur.harvest)} / {formatHarvest(py.harvest)}</Text>
+                  {pyHarvestRate !== null ? <StatBadge value={pyHarvestRate} /> : <Text style={styles.noDataText}>데이터 없음</Text>}
+                </View>
+              </View>
+            </>
+          )}
         </Card>
 
         {/* 잔여 재고 */}
@@ -254,16 +308,12 @@ export default function StatisticsScreen() {
           <View style={styles.stockRow}>
             <View style={styles.stockItem}>
               <Text style={styles.stockLabel}>수확량</Text>
-              <Text style={[styles.stockValue, { color: Colors.primary }]}>
-                {cur.harvest.toLocaleString()}kg
-              </Text>
+              <Text style={[styles.stockValue, { color: Colors.primary }]}>{cur.harvest.toLocaleString()}kg</Text>
             </View>
             <Text style={styles.stockOp}>−</Text>
             <View style={styles.stockItem}>
               <Text style={styles.stockLabel}>판매량</Text>
-              <Text style={[styles.stockValue, { color: Colors.primaryDark }]}>
-                {cur.sales.toLocaleString()}kg
-              </Text>
+              <Text style={[styles.stockValue, { color: Colors.primaryDark }]}>{cur.sales.toLocaleString()}kg</Text>
             </View>
             <Text style={styles.stockOp}>−</Text>
             <View style={styles.stockItem}>
@@ -282,6 +332,20 @@ export default function StatisticsScreen() {
           </View>
         </Card>
 
+        {/* 최근 판매 단가 추이 */}
+        {priceHistory.length > 0 && (
+          <Card style={styles.priceCard}>
+            <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>최근 판매 단가</Text>
+            {priceHistory.slice(-8).map((item, i) => (
+              <View key={i} style={[styles.priceRow, i > 0 && { borderTopWidth: 1, borderTopColor: Colors.border }]}>
+                <Text style={styles.priceDate}>{item.date.slice(5)}</Text>
+                <Text style={styles.priceLabel} numberOfLines={1}>{item.label}</Text>
+                <Text style={styles.priceValue}>{item.price.toLocaleString()}원</Text>
+              </View>
+            ))}
+          </Card>
+        )}
+
         <TouchableOpacity style={styles.breakdownBtn} onPress={() => setShowBreakdown(true)}>
           <Text style={styles.breakdownBtnText}>📊 작물·품종·사이즈별 상세 분석</Text>
           <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
@@ -297,19 +361,12 @@ export default function StatisticsScreen() {
 
       {user && showBreakdown && (
         <BreakdownModal
-          visible={showBreakdown}
-          onClose={() => setShowBreakdown(false)}
-          userId={user.id}
-          from={curFrom}
-          to={curTo}
+          visible={showBreakdown} onClose={() => setShowBreakdown(false)}
+          userId={user.id} from={curFrom} to={curTo}
         />
       )}
       {user && showExport && (
-        <ExportModal
-          visible={showExport}
-          onClose={() => setShowExport(false)}
-          userId={user.id}
-        />
+        <ExportModal visible={showExport} onClose={() => setShowExport(false)} userId={user.id} />
       )}
     </SafeAreaView>
   );
@@ -317,19 +374,25 @@ export default function StatisticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  headerGradient: { paddingBottom: Spacing.lg },
+  headerGradient: { paddingBottom: Spacing.md },
   title: { ...Typography.h2, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, marginBottom: Spacing.md },
   periodTabs: {
-    flexDirection: 'row',
-    marginHorizontal: Spacing.lg,
-    backgroundColor: Colors.border,
-    borderRadius: Radius.full,
-    padding: 3,
+    flexDirection: 'row', marginHorizontal: Spacing.lg,
+    backgroundColor: Colors.border, borderRadius: Radius.full, padding: 3,
   },
   periodBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: Radius.full },
   periodBtnActive: { backgroundColor: Colors.surface },
   periodText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
   periodTextActive: { color: Colors.primary },
+  farmFilterScroll: { marginTop: Spacing.sm },
+  farmFilterContent: { paddingHorizontal: Spacing.lg, gap: 6 },
+  farmChip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
+  },
+  farmChipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
+  farmChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSub },
+  farmChipTextActive: { color: Colors.primaryDark },
   scroll: { flex: 1 },
   summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   summaryCard: { width: '48%', alignItems: 'center', paddingVertical: Spacing.md },
@@ -337,20 +400,9 @@ const styles = StyleSheet.create({
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
   chartCard: { margin: Spacing.lg, marginTop: Spacing.sm },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
+  chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   chartTypeTabs: { flexDirection: 'row', gap: 4 },
-  chartTypeBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+  chartTypeBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   chartTypeBtnActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
   chartTypeText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   chartTypeTextActive: { color: Colors.primary },
@@ -358,16 +410,16 @@ const styles = StyleSheet.create({
   emptyText: { ...Typography.body, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4 },
   compareCard: { marginHorizontal: Spacing.lg, marginTop: 0 },
-  compareRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: Spacing.xs,
-  },
+  compareRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: Spacing.xs },
   compareLabel: { ...Typography.body, flex: 1 },
   compareRight: { alignItems: 'flex-end', gap: 4 },
   compareValues: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   noDataText: { ...Typography.caption, color: Colors.textLight },
+  compareDivider: {
+    marginVertical: Spacing.sm, paddingVertical: Spacing.xs,
+    borderTopWidth: 1, borderTopColor: Colors.border, alignItems: 'center',
+  },
+  compareDividerText: { ...Typography.caption, color: Colors.textLight },
   stockCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.sm },
   stockRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stockItem: { flex: 1, alignItems: 'center' },
@@ -378,10 +430,16 @@ const styles = StyleSheet.create({
   stockResultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   stockResultLabel: { ...Typography.bodyBold },
   stockResultValue: { fontSize: 22, fontWeight: '800' },
+  priceCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.sm },
+  priceRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 6 },
+  priceDate: { ...Typography.caption, color: Colors.textSub, width: 36 },
+  priceLabel: { ...Typography.caption, color: Colors.text, flex: 1 },
+  priceValue: { ...Typography.bodyBold, color: Colors.primaryDark },
   breakdownBtn: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginHorizontal: Spacing.lg, marginTop: Spacing.sm, backgroundColor: Colors.primaryUltraLight,
-    borderRadius: Radius.md, padding: Spacing.md, borderWidth: 1, borderColor: Colors.primaryLight,
+    marginHorizontal: Spacing.lg, marginTop: Spacing.sm,
+    backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.primaryLight,
   },
   breakdownBtnText: { ...Typography.bodyBold, color: Colors.primaryDark },
 });
