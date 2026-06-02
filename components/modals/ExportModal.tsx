@@ -3,9 +3,12 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Modal,
   ActivityIndicator, Alert, Linking, Platform,
 } from 'react-native';
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { fetchMonthlyExportData, createMonthlySpreadsheet } from '../../lib/googleSheets';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface Props {
   visible: boolean;
@@ -13,8 +16,11 @@ interface Props {
   userId: string;
 }
 
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
-const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
+// app.json의 iosUrlScheme에서 파생 — iOS OAuth 앱 클라이언트 (커스텀 스킴 리다이렉트 지원)
+const IOS_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+  '971453817083-gprhfenf0sjciiu2vmafnihpihldpf8k.apps.googleusercontent.com';
+const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
 
 export function ExportModal({ visible, onClose, userId }: Props) {
   const now = new Date();
@@ -23,66 +29,50 @@ export function ExportModal({ visible, onClose, userId }: Props) {
   const [exporting, setExporting] = useState(false);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
 
-  useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: WEB_CLIENT_ID,
-      iosClientId: IOS_CLIENT_ID,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      offlineAccess: false,
-    });
-  }, []);
+  // WEB 클라이언트 타입은 커스텀 스킴 리다이렉트 불가 → iOS/Android 전용 클라이언트만 사용
+  const [, , promptAsync] = Google.useAuthRequest({
+    iosClientId: IOS_CLIENT_ID,
+    androidClientId: ANDROID_CLIENT_ID || undefined,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
 
   useEffect(() => {
     if (!visible) { setSheetUrl(null); setExporting(false); }
   }, [visible]);
 
   const handleExport = async () => {
-    if (!WEB_CLIENT_ID) {
-      Alert.alert('설정 필요', 'Google 클라이언트 ID가 설정되지 않았습니다.');
+    if (Platform.OS === 'android' && !ANDROID_CLIENT_ID) {
+      Alert.alert(
+        '설정 필요',
+        'Android용 Google 클라이언트 ID가 없습니다.\nGoogle Cloud Console에서 Android 앱 OAuth 클라이언트를 생성 후 EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID에 설정하세요.',
+      );
       return;
     }
     setExporting(true);
     try {
-      // Android만 Play Services 확인
-      if (Platform.OS === 'android') {
-        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const result = await promptAsync();
+      if (result.type === 'error') {
+        Alert.alert('인증 오류', result.error?.message ?? '인증에 실패했습니다.');
+        return;
       }
+      if (result.type !== 'success') return;
 
-      // 이미 로그인된 경우 silent sign-in, 아닌 경우 인터랙티브 sign-in
-      let accessToken: string | null = null;
-      try {
-        await GoogleSignin.silentSignIn();
-        const tokens = await GoogleSignin.getTokens();
-        accessToken = tokens.accessToken;
-      } catch {
-        await GoogleSignin.signIn();
-        const tokens = await GoogleSignin.getTokens();
-        accessToken = tokens.accessToken;
-      }
-
-      if (!accessToken) throw new Error('Google 인증 토큰을 가져오지 못했습니다.');
+      const accessToken = result.authentication?.accessToken;
+      if (!accessToken) throw new Error('액세스 토큰을 받지 못했습니다.');
 
       const rows = await fetchMonthlyExportData(userId, year, month);
       if (rows.length === 0) {
         Alert.alert('데이터 없음', `${year}년 ${month}월에 기록된 데이터가 없습니다.`);
-        setExporting(false);
         return;
       }
 
       const url = await createMonthlySpreadsheet(accessToken, year, month, rows);
       setSheetUrl(url);
     } catch (e: any) {
-      if (e.code === statusCodes.SIGN_IN_CANCELLED) {
-        // 사용자가 취소
-      } else if (e.code === statusCodes.IN_PROGRESS) {
-        Alert.alert('안내', '이미 로그인 진행 중입니다.');
-      } else if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        Alert.alert('오류', 'Google Play Services를 사용할 수 없습니다.');
-      } else {
-        Alert.alert('오류', e.message ?? '알 수 없는 오류가 발생했습니다.');
-      }
+      Alert.alert('오류', e?.message ?? '알 수 없는 오류가 발생했습니다.');
+    } finally {
+      setExporting(false);
     }
-    setExporting(false);
   };
 
   const changeMonth = (delta: number) => {

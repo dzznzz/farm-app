@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    // "newArchEnabled": true,
-    // "splash": {
-    //   "resizeMode": "contain",
-    //   "backgroundColor": "#F8F6FF"
-    // },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dznz.farm",

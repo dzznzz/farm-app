@@ -4,7 +4,7 @@ import {
   Alert, ActivityIndicator, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Contacts from 'expo-contacts/legacy';
+import { presentContactPickerAsync } from 'expo-contacts';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -19,6 +19,8 @@ interface Props {
   userId?: string;
 }
 
+const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
 export function ContactsPage({ onBack, userId }: Props) {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +33,7 @@ export function ContactsPage({ onBack, userId }: Props) {
   const [newPhone, setNewPhone] = useState('');
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+
   const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 
   const loadContacts = async () => {
@@ -48,60 +51,41 @@ export function ContactsPage({ onBack, userId }: Props) {
     if (!isMobile || !userId || importing) return;
     setImporting(true);
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      const permStatus: string = status;
-      if (permStatus !== 'granted' && permStatus !== 'limited') {
-        Alert.alert(
-          '연락처 권한 필요',
-          '설정 → 개인정보 보호 → 연락처에서 허용해주세요.',
-          [
-            { text: '취소', style: 'cancel' },
-            { text: '설정 열기', onPress: () => Linking.openURL('app-settings:') },
-          ]
-        );
-        return;
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result: any = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.FirstName, Contacts.Fields.LastName],
-      } as any);
-      const validContacts: any[] = (result.data ?? []).map((c: any) => ({
-        ...c,
-        resolvedName: c.name || [c.firstName, c.lastName].filter(Boolean).join(' ').trim(),
-      })).filter((c: any) => c.resolvedName);
+      // 네이티브 연락처 피커 — 권한 없이 iOS 시스템 UI에서 직접 선택
+      const contact = await presentContactPickerAsync() as any;
+      if (!contact) return;
 
-      if (validContacts.length === 0) {
-        Alert.alert(
-          '연락처 없음',
-          '가져올 연락처가 없습니다.\n권한이 "선택된 연락처만"인 경우 설정에서 변경해주세요.',
-          [
-            { text: '확인', style: 'cancel' },
-            { text: '설정 열기', onPress: () => Linking.openURL('app-settings:') },
-          ]
-        );
+      const resolvedName: string =
+        contact.name ||
+        [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
+
+      if (!resolvedName) {
+        Alert.alert('안내', '이름이 없는 연락처입니다.');
         return;
       }
 
-      const existingNames = new Set(contacts.map((c) => c.name.trim().toLowerCase()));
-      const newContacts = validContacts.filter((c: any) => !existingNames.has(c.resolvedName.toLowerCase()));
-
-      if (newContacts.length === 0) {
-        Alert.alert('안내', `전체 ${validContacts.length}개 연락처가 이미 등록되어 있습니다.`);
+      // 현재 앱에 등록된 연락처인지 확인
+      const alreadyExists = contacts.some(
+        (c) => normalize(c.name) === normalize(resolvedName),
+      );
+      if (alreadyExists) {
+        Alert.alert('안내', `${resolvedName}은(는) 이미 등록된 연락처입니다.`);
         return;
       }
 
-      const baseOrder = contacts.length;
-      const rows = newContacts.map((c: any, i: number) => ({
-        user_id: userId, name: c.resolvedName, phone: c.phoneNumbers?.[0]?.number ?? null, sort_order: baseOrder + i,
-      }));
-      const { error } = await supabase.from('contacts').insert(rows);
+      const phone: string | null = contact.phoneNumbers?.[0]?.number ?? null;
+      const { error } = await supabase.from('contacts').insert({
+        user_id: userId,
+        name: resolvedName,
+        phone,
+        sort_order: contacts.length,
+      });
+
       if (error) {
         Alert.alert('저장 오류', error.message);
       } else {
-        const skipCount = validContacts.length - newContacts.length;
-        const skipMsg = skipCount > 0 ? ` (중복 ${skipCount}개 제외)` : '';
-        Alert.alert('완료', `${rows.length}개 연락처를 가져왔습니다.${skipMsg}`);
         await loadContacts();
+        Alert.alert('완료', `${resolvedName} 연락처를 추가했습니다.`);
       }
     } catch (e: any) {
       Alert.alert('오류', e?.message ?? '연락처를 가져오는 중 오류가 발생했습니다.');
@@ -113,7 +97,12 @@ export function ContactsPage({ onBack, userId }: Props) {
   const deleteContact = (id: string, name: string) => {
     Alert.alert('삭제', `${name} 연락처를 삭제할까요?`, [
       { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: async () => { await supabase.from('contacts').delete().eq('id', id); loadContacts(); } },
+      {
+        text: '삭제', style: 'destructive', onPress: async () => {
+          await supabase.from('contacts').delete().eq('id', id);
+          await loadContacts();
+        },
+      },
     ]);
   };
 

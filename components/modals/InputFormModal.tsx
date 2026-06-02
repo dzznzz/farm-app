@@ -702,7 +702,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                       )}
 
                       {/* ENTRIES */}
-                      {stepId === 'entries' && <EntriesContent />}
+                      {stepId === 'entries' && EntriesContent()}
 
                       {/* PRICE */}
                       {stepId === 'price' && (
@@ -733,7 +733,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
               {allStepsDone && (
                 <>
                   {/* 작업자 (수확) */}
-                  {tab === 'harvest' && <WorkersSection />}
+                  {tab === 'harvest' && WorkersSection()}
 
                   {/* Optional fields */}
                   <View style={styles.optionalSection}>
