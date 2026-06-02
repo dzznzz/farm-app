@@ -4,7 +4,7 @@ import {
   Alert, ActivityIndicator, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Contact, Fields } from 'expo-contacts';
+import { Contact } from 'expo-contacts';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -52,15 +52,10 @@ export function ContactsPage({ onBack, userId }: Props) {
     setImporting(true);
     try {
       // 네이티브 연락처 피커 — 권한 없이 iOS 시스템 UI에서 직접 선택
-      const contact = await Contact.presentPicker({
-        fields: [Fields.Name, Fields.FirstName, Fields.LastName, Fields.PhoneNumbers],
-      });
+      const contact = await Contact.presentPicker();
       if (!contact) return;
 
-      const resolvedName =
-        contact.name ||
-        [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() ||
-        '';
+      const resolvedName = (await contact.getFullName())?.trim() ?? '';
 
       if (!resolvedName) {
         Alert.alert('안내', '이름이 없는 연락처입니다.');
@@ -76,7 +71,8 @@ export function ContactsPage({ onBack, userId }: Props) {
         return;
       }
 
-      const phone: string | null = contact.phoneNumbers?.[0]?.number ?? null;
+      const phones = await contact.getPhones();
+      const phone: string | null = phones?.[0]?.number ?? null;
       const { error } = await supabase.from('contacts').insert({
         user_id: userId,
         name: resolvedName,
