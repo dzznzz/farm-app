@@ -4,6 +4,57 @@
 
 ---
 
+## 2026-06-02 (3차) — 커밋 `614d1af`
+
+### Fix 1. AdminDataPage 탭 원형 렌더링 (ISSUE-012)
+
+**파일**: `components/pages/AdminDataPage.tsx`
+
+- `<ScrollView horizontal contentContainerStyle={styles.tabs}>` → `<View style={styles.tabsRow}>`
+- `tabs` 스타일 삭제, `tabsRow: { flexDirection: 'row', margin, backgroundColor, borderRadius: Radius.full, padding }` 신규
+- `tabBtn`에 `flex: 1` 추가 → 5개 탭이 균등 분할
+
+---
+
+### Fix 2. 농장 뱃지 타이밍 버그 (ISSUE-013)
+
+**파일**: `app/(tabs)/input.tsx`
+
+```tsx
+// 변경 전: loadRecords 시점에 farmName 저장 (farms가 비어있으면 null)
+farmName: getFarmName(r.farm_id),
+
+// 변경 후: 렌더 시점에 현재 farms state에서 실시간 조회
+const fn = r.farmName ?? farms.find(f => f.id === r.farmId)?.name;
+```
+
+---
+
+### Fix 3. 단가 히스토리 범위 (ISSUE-014)
+
+**파일**: `app/(tabs)/statistics.tsx`
+
+```typescript
+// 변경 전: 선택 기간(curFrom~curTo)으로만 조회
+fetchPriceHistory(user.id, curFrom, curTo, selectedFarmId)
+
+// 변경 후: 기간 탭 무관, 항상 최근 30일
+const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+fetchPriceHistory(user.id, d30.toISOString().split('T')[0], today, selectedFarmId)
+```
+
+---
+
+### Fix 4. 통계 카드 전체 너비
+
+**파일**: `app/(tabs)/statistics.tsx`
+
+- `summaryCard: { width: '48%' }` → `width: '50%'`, gap 제거
+- 모든 섹션 카드 `marginHorizontal: Spacing.lg` → `Spacing.md`
+- `summaryGrid` padding 조정
+
+---
+
 ## 2026-06-02 (2차) — 커밋 `49135bb`
 
 ### 목적

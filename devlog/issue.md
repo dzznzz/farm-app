@@ -178,6 +178,60 @@ class-based API(`Contact.presentPicker()`)로 전환 필요.
 
 ---
 
+## ✅ ISSUE-012 — 데이터 관리 탭 PC/웹에서 원형 렌더링
+
+**증상**: 더보기 → 데이터 관리 탭(작물/품종/사이즈/단위/비용) 선택 영역이 큰 원형 도형으로 깨짐
+
+**원인**
+`ScrollView horizontal`의 `contentContainerStyle`에 `borderRadius: Radius.full`이 지정됨.
+PC/웹 환경에서는 contentContainerStyle이 별도 div로 렌더링되어 `border-radius: 9999px`가 적용 → 내부 콘텐츠 높이 기준으로 원형 클리핑 발생
+
+**해결**
+`ScrollView horizontal` → `View`로 교체. `borderRadius: Radius.full`을 View의 style에 직접 적용(`tabsRow` 스타일).
+5개 탭은 스크롤 없이 고정이므로 ScrollView 불필요.
+
+**관련 커밋**: `614d1af`
+
+---
+
+## ✅ ISSUE-013 — 농장 뱃지가 첫 로드 시 표시 안 됨
+
+**증상**: 입력 탭 레코드 카드에 농장 뱃지가 보이지 않음
+
+**원인**
+`farms` 로드와 `loadRecords` 실행이 동시에 트리거됨. `loadRecords`가 먼저 완료되면
+`farms` state가 아직 `[]`이라 `getFarmName()` 함수가 항상 `null` 반환 → `farmName: null`로 저장됨.
+
+**해결**
+레코드 로드 시점에 farmName을 저장하는 방식 → 렌더 시점에 `farms` state를 참조하는 방식으로 변경:
+```tsx
+const fn = r.farmName ?? farms.find(f => f.id === r.farmId)?.name;
+```
+`r.farmName`이 null이어도 현재 `farms`에서 실시간 조회.
+
+**관련 커밋**: `614d1af`
+
+---
+
+## ✅ ISSUE-014 — 단가 히스토리 항상 비어 있음
+
+**증상**: 통계 페이지에 "최근 판매 단가" 섹션이 나타나지 않음
+
+**원인**
+`fetchPriceHistory`가 현재 선택된 기간(`curFrom~curTo`)으로만 조회.
+일별 모드에서는 오늘 하루만 조회 → 오늘 판매가 없으면 빈 배열 → 섹션 숨김.
+
+**해결**
+기간 탭과 무관하게 항상 최근 30일 고정 조회:
+```typescript
+const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+fetchPriceHistory(user.id, d30.toISOString().split('T')[0], today, selectedFarmId)
+```
+
+**관련 커밋**: `614d1af`
+
+---
+
 ## 참고 — 알려진 제약 사항
 
 | 항목 | 내용 |

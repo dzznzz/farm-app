@@ -15,6 +15,26 @@
 
 ---
 
+## 2026-06-02 — 3차 작업 (UI 버그 수정 4건)
+
+### 데이터 관리 탭 렌더링 깨짐 수정
+
+`ScrollView horizontal`의 `contentContainerStyle`에 `borderRadius: Radius.full`이 적용되어 PC/웹에서 원형 렌더링. 5개 탭이 고정이므로 `View`로 교체, `tabsRow` 스타일로 통일.
+
+### 농장 뱃지 타이밍 버그 수정
+
+`loadRecords`가 `farms` 로드보다 먼저 완료되면 `getFarmName()`이 빈 배열을 참조해 `farmName = null` 저장됨. 렌더 시점에 `farms` state에서 실시간 조회(`r.farmName ?? farms.find(...)`)하는 방식으로 변경.
+
+### 단가 히스토리 범위 수정
+
+일별 탭 선택 시 오늘 하루 판매 데이터만 조회해 섹션이 항상 숨겨지던 문제. 기간 탭과 무관하게 최근 30일 고정 조회로 변경.
+
+### 통계 카드 전체 너비
+
+요약 카드 `width: '48%'` → `50%`, 모든 섹션 `marginHorizontal: Spacing.lg` → `Spacing.md`로 조정해 화면을 꽉 채우도록 수정.
+
+---
+
 ## 2026-06-02 — 2차 작업 (7가지 기능 개선)
 
 ### 수정 모드 farm_id 복원
