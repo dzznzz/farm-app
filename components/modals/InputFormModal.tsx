@@ -404,6 +404,9 @@ export function InputFormModal({
 
   const removeEntry = (i: number) => setEntries((prev) => prev.filter((_, idx) => idx !== i));
 
+  const updateEntry = (i: number, field: 'quantity' | 'price', value: string) =>
+    setEntries((prev) => prev.map((e, idx) => idx === i ? { ...e, [field]: value } : e));
+
   const addWorker = () => {
     if (!wName.trim()) { setWorkerError('이름을 입력해주세요.'); return; }
     if (!wCost.trim() || isNaN(parseFloat(wCost))) { setWorkerError('인건비를 입력해주세요.'); return; }
@@ -634,18 +637,48 @@ export function InputFormModal({
         <View style={styles.entryList}>
           {entries.map((e, i) => (
             <View key={i}
-              style={[styles.entryRow, i < entries.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight }]}>
-              <View style={{ flex: 1 }}>
+              style={[styles.entryBlock, i < entries.length - 1 && styles.entryBlockBorder]}>
+              {/* 헤더: 품종·사이즈 + 삭제 */}
+              <View style={styles.entryBlockHeader}>
                 <Text style={styles.entryMain}>{e.variety} · {e.size}</Text>
-                <Text style={styles.entrySub}>
-                  {e.quantity}{e.unit}
-                  {tab === 'sales' && e.price ? ` · ${Number(e.price).toLocaleString()}원` : ''}
-                </Text>
+                <TouchableOpacity onPress={() => removeEntry(i)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Text style={styles.entryRemove}>✕</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => removeEntry(i)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Text style={styles.entryRemove}>✕</Text>
-              </TouchableOpacity>
+
+              {tab === 'sales' ? (
+                /* 판매: 수량 + 단가 인라인 편집 */
+                <View style={styles.entryEditRow}>
+                  <View style={styles.entryEditGroup}>
+                    <Text style={styles.entryEditLabel}>수량</Text>
+                    <View style={styles.entryEditInline}>
+                      <TextInput
+                        style={styles.entryEditInput}
+                        value={e.quantity}
+                        onChangeText={(v) => updateEntry(i, 'quantity', v)}
+                        keyboardType="decimal-pad"
+                        placeholder="0"
+                        placeholderTextColor={Colors.textLight}
+                      />
+                      <Text style={styles.entryEditUnit}>{e.unit}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.entryEditGroup}>
+                    <Text style={styles.entryEditLabel}>단가 (원)</Text>
+                    <TextInput
+                      style={styles.entryEditInput}
+                      value={e.price ?? ''}
+                      onChangeText={(v) => updateEntry(i, 'price', v)}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor={Colors.textLight}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.entrySub}>{e.quantity}{e.unit}</Text>
+              )}
             </View>
           ))}
         </View>
@@ -1192,6 +1225,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 8,
   },
+  entryBlock: { paddingVertical: 10 },
+  entryBlockBorder: { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight },
+  entryBlockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  entryEditRow: { flexDirection: 'row', gap: 10 },
+  entryEditGroup: { flex: 1 },
+  entryEditLabel: { fontSize: 11, fontWeight: '600', color: Colors.textSub, marginBottom: 3 },
+  entryEditInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  entryEditInput: {
+    flex: 1, backgroundColor: Colors.surface, borderRadius: Radius.sm,
+    paddingHorizontal: 8, paddingVertical: 6, fontSize: 14, color: Colors.text,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  entryEditUnit: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   entryMain: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },
   entrySub: { fontSize: 12, color: Colors.textSub, marginTop: 2 },
   entryRemove: { fontSize: 15, color: Colors.danger, paddingLeft: 10 },
