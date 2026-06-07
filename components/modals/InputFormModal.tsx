@@ -709,9 +709,9 @@ export function InputFormModal({
               </View>
 
               {tab === 'sales' ? (
-                /* 판매: 수량 + 단가 인라인 편집 */
-                <View style={styles.entryEditRow}>
-                  <View style={styles.entryEditGroup}>
+                /* 판매: 수량 + 단가 세로 편집 */
+                <View style={{ gap: 6 }}>
+                  <View>
                     <Text style={styles.entryEditLabel}>수량</Text>
                     <View style={styles.entryEditInline}>
                       <TextInput
@@ -725,10 +725,10 @@ export function InputFormModal({
                       <Text style={styles.entryEditUnit}>{e.unit}</Text>
                     </View>
                   </View>
-                  <View style={styles.entryEditGroup}>
+                  <View>
                     <Text style={styles.entryEditLabel}>단가 (원)</Text>
                     <TextInput
-                      style={styles.entryEditInput}
+                      style={[styles.entryEditInput, { flex: 0 }]}
                       value={e.price ?? ''}
                       onChangeText={(v) => updateEntry(i, 'price', v)}
                       keyboardType="decimal-pad"

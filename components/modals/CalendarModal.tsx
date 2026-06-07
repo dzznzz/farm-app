@@ -7,25 +7,147 @@ interface Props {
   value: string;
   onSelect: (d: string) => void;
   onClose: () => void;
-  maxDate?: string; // 이 날짜 이후 선택 불가
+  maxDate?: string;
+  mode?: 'day' | 'week' | 'month' | 'year';
 }
 
-export function CalendarModal({ visible, value, onSelect, onClose, maxDate }: Props) {
+const MONTHS_KO = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+
+export function CalendarModal({ visible, value, onSelect, onClose, maxDate, mode = 'day' }: Props) {
   const parsed = value.split('-');
   const [viewYear, setViewYear] = useState(parseInt(parsed[0]));
-  const [viewMonth, setViewMonth] = useState(parseInt(parsed[1]) - 1);
+  const [viewMonth, setViewMonth] = useState(parseInt(parsed[1] ?? '1') - 1);
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  const limitStr = maxDate ?? todayStr;
+  const limitYM = limitStr.slice(0, 7);
+  const limitYear = parseInt(limitStr.slice(0, 4));
+
+  const handleToday = () => {
+    const d = new Date();
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    onSelect(todayStr);
+    onClose();
+  };
+
+  const Footer = () => (
+    <View style={styles.footer}>
+      <TouchableOpacity style={styles.todayBtn} onPress={handleToday}>
+        <Text style={styles.todayBtnText}>오늘</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+        <Text style={styles.closeBtnText}>닫기</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // ── Year picker ──
+  if (mode === 'year') {
+    const selectedYear = parseInt(value.slice(0, 4));
+    const centerYear = viewYear;
+    const years = Array.from({ length: 12 }, (_, i) => centerYear - 5 + i);
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <TouchableOpacity style={styles.overlay} onPress={onClose} activeOpacity={1}>
+          <TouchableOpacity activeOpacity={1} style={styles.container}>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => setViewYear(y => y - 12)} style={styles.navBtn}>
+                <Text style={styles.navText}>‹</Text>
+              </TouchableOpacity>
+              <Text style={styles.monthTitle}>연도 선택</Text>
+              <TouchableOpacity
+                onPress={() => setViewYear(y => y + 12)}
+                style={styles.navBtn}
+                disabled={centerYear + 6 > limitYear}
+              >
+                <Text style={[styles.navText, centerYear + 6 > limitYear && { color: Colors.border }]}>›</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.periodGrid}>
+              {years.map((y) => {
+                const isSelected = y === selectedYear;
+                const isDisabled = y > limitYear;
+                return (
+                  <TouchableOpacity
+                    key={y}
+                    style={{ width: '33.33%', padding: 4 }}
+                    onPress={() => { if (!isDisabled) { onSelect(`${y}-01-01`); onClose(); } }}
+                    disabled={isDisabled}
+                  >
+                    <View style={[styles.periodCellInner, isSelected && styles.periodCellSelected, isDisabled && { opacity: 0.35 }]}>
+                      <Text style={[styles.periodCellText, isSelected && styles.periodCellTextSelected]}>
+                        {y}년
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Footer />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    );
+  }
+
+  // ── Month picker ──
+  if (mode === 'month') {
+    const selectedYM = value.slice(0, 7);
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <TouchableOpacity style={styles.overlay} onPress={onClose} activeOpacity={1}>
+          <TouchableOpacity activeOpacity={1} style={styles.container}>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => setViewYear(y => y - 1)} style={styles.navBtn}>
+                <Text style={styles.navText}>‹</Text>
+              </TouchableOpacity>
+              <Text style={styles.monthTitle}>{viewYear}년</Text>
+              <TouchableOpacity
+                onPress={() => setViewYear(y => y + 1)}
+                style={styles.navBtn}
+                disabled={viewYear >= limitYear}
+              >
+                <Text style={[styles.navText, viewYear >= limitYear && { color: Colors.border }]}>›</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.periodGrid}>
+              {MONTHS_KO.map((m, i) => {
+                const ym = `${viewYear}-${String(i + 1).padStart(2, '0')}`;
+                const isSelected = ym === selectedYM;
+                const isDisabled = ym > limitYM;
+                return (
+                  <TouchableOpacity
+                    key={m}
+                    style={{ width: '25%', padding: 4 }}
+                    onPress={() => { if (!isDisabled) { onSelect(`${ym}-01`); onClose(); } }}
+                    disabled={isDisabled}
+                  >
+                    <View style={[styles.periodCellInner, isSelected && styles.periodCellSelected, isDisabled && { opacity: 0.35 }]}>
+                      <Text style={[styles.periodCellText, isSelected && styles.periodCellTextSelected]}>
+                        {m}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Footer />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    );
+  }
+
+  // ── Day / Week picker ──
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const firstDay = new Date(viewYear, viewMonth, 1).getDay();
-  const todayStr = new Date().toISOString().split('T')[0];
-  const limitStr = maxDate ?? todayStr; // maxDate 없으면 오늘이 한계
 
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let i = 1; i <= daysInMonth; i++) cells.push(i);
 
   const viewYM = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
-  const limitYM = limitStr.slice(0, 7);
   const isNextMonthDisabled = viewYM >= limitYM;
 
   const prevMonth = () => {
@@ -37,6 +159,20 @@ export function CalendarModal({ visible, value, onSelect, onClose, maxDate }: Pr
     if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
     else setViewMonth((m) => m + 1);
   };
+
+  // Week mode: compute selected week range from value
+  let weekStart = '';
+  let weekEnd = '';
+  if (mode === 'week') {
+    const selD = new Date(value);
+    const dow = selD.getDay();
+    const mon = new Date(selD);
+    mon.setDate(selD.getDate() - (dow === 0 ? 6 : dow - 1));
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    weekStart = mon.toISOString().split('T')[0];
+    weekEnd = sun.toISOString().split('T')[0];
+  }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -69,10 +205,16 @@ export function CalendarModal({ visible, value, onSelect, onClose, maxDate }: Pr
               const isFuture = dateStr > limitStr;
               const isSun = i % 7 === 0;
               const isSat = i % 7 === 6;
+              const isInWeek = mode === 'week' && !!weekStart && dateStr >= weekStart && dateStr <= weekEnd;
               return (
                 <TouchableOpacity
                   key={dateStr}
-                  style={[styles.cell, isSelected && styles.cellSelected, isToday && !isSelected && styles.cellToday]}
+                  style={[
+                    styles.cell,
+                    isInWeek && !isFuture && styles.cellInWeek,
+                    isSelected && styles.cellSelected,
+                    isToday && !isSelected && !isInWeek && styles.cellToday,
+                  ]}
                   onPress={() => { if (!isFuture) { onSelect(dateStr); onClose(); } }}
                   disabled={isFuture}
                 >
@@ -80,9 +222,10 @@ export function CalendarModal({ visible, value, onSelect, onClose, maxDate }: Pr
                     styles.dayText,
                     isFuture && styles.dayFutureText,
                     isSelected && styles.daySelectedText,
-                    !isSelected && !isFuture && isToday && { color: Colors.primary },
-                    !isSelected && !isFuture && isSun && { color: Colors.danger },
-                    !isSelected && !isFuture && isSat && { color: Colors.primary },
+                    isInWeek && !isFuture && !isSelected && styles.dayInWeekText,
+                    !isSelected && !isInWeek && !isFuture && isToday && { color: Colors.primary },
+                    !isSelected && !isInWeek && !isFuture && isSun && { color: Colors.danger },
+                    !isSelected && !isInWeek && !isFuture && isSat && { color: Colors.primary },
                   ]}>
                     {day}
                   </Text>
@@ -91,9 +234,7 @@ export function CalendarModal({ visible, value, onSelect, onClose, maxDate }: Pr
             })}
           </View>
 
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>닫기</Text>
-          </TouchableOpacity>
+          <Footer />
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -119,12 +260,31 @@ const styles = StyleSheet.create({
   cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
   cellSelected: { backgroundColor: Colors.primary, borderRadius: Radius.full },
   cellToday: { borderWidth: 1, borderColor: Colors.primary, borderRadius: Radius.full },
+  cellInWeek: { backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.sm },
   dayText: { fontSize: 14, color: Colors.text },
   dayFutureText: { color: Colors.border },
   daySelectedText: { color: '#fff', fontWeight: '700' },
-  closeBtn: {
-    marginTop: Spacing.md, backgroundColor: Colors.primaryUltraLight,
+  dayInWeekText: { color: Colors.primaryDark, fontWeight: '600' },
+  // Period grids (month / year picker)
+  periodGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: Spacing.sm },
+  periodCellInner: {
+    paddingVertical: 11, alignItems: 'center', justifyContent: 'center',
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  periodCellSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  periodCellText: { fontSize: 13, fontWeight: '600', color: Colors.text },
+  periodCellTextSelected: { color: '#fff', fontWeight: '700' },
+  // Footer
+  footer: { flexDirection: 'row', gap: 8, marginTop: Spacing.md },
+  todayBtn: {
+    flex: 1, backgroundColor: Colors.primary,
     borderRadius: Radius.md, paddingVertical: 10, alignItems: 'center',
   },
-  closeBtnText: { color: Colors.primaryDark, fontWeight: '700' },
+  todayBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  closeBtn: {
+    flex: 1, backgroundColor: Colors.primaryUltraLight,
+    borderRadius: Radius.md, paddingVertical: 10, alignItems: 'center',
+  },
+  closeBtnText: { color: Colors.primaryDark, fontWeight: '700', fontSize: 14 },
 });

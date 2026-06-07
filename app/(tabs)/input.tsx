@@ -12,6 +12,7 @@ import { Card } from '../../components/ui/Card';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { InputFormModal } from '../../components/modals/InputFormModal';
 import { RecordDetailModal, DisplayRecord } from '../../components/modals/RecordDetailModal';
+import { CalendarModal } from '../../components/modals/CalendarModal';
 
 type TabType = 'harvest' | 'sales' | 'other';
 
@@ -123,6 +124,7 @@ export default function InputScreen() {
   const [loading, setLoading] = useState(false);
   const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string; is_primary: boolean }[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<DisplayRecord | null>(null);
   const [editRecord, setEditRecord] = useState<DisplayRecord | undefined>(undefined);
   const [groupEditRecords, setGroupEditRecords] = useState<DisplayRecord[] | undefined>(undefined);
@@ -214,7 +216,7 @@ export default function InputScreen() {
           <TouchableOpacity style={styles.navBtn} onPress={() => handleDateChange(-1)}>
             <Text style={styles.navArrow}>‹</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { setDate(today); loadRecords(today); }} style={styles.dateLabel}>
+          <TouchableOpacity onPress={() => setShowCalendar(true)} style={styles.dateLabel}>
             <Text style={styles.dateText}>{formatDisplayDate(date)}</Text>
             {date === today && <Text style={styles.todayBadge}>오늘</Text>}
           </TouchableOpacity>
@@ -387,6 +389,13 @@ export default function InputScreen() {
           setGroupEditRecords(undefined);
           setShowForm(true);
         }}
+      />
+
+      <CalendarModal
+        visible={showCalendar}
+        value={date}
+        onSelect={(d) => { setDate(d); loadRecords(d); setShowCalendar(false); }}
+        onClose={() => setShowCalendar(false)}
       />
     </SafeAreaView>
   );

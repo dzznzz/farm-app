@@ -15,6 +15,46 @@
 
 ---
 
+## 2026-06-07 — 9차 작업 (UI 개선 — 차트 애니메이션, 캘린더 기간별 모드)
+
+### 도넛 차트 회전 애니메이션
+
+- `statistics.tsx`에 `Animated.Value` + `Easing.out(Easing.cubic)` 2초 회전 애니메이션 적용
+- `donutTab` 전환 또는 데이터 로드 시 자동 트리거
+- 회전 중 중앙 레이블(`kg` 텍스트) 숨김 → 완료 후 표시
+- BarChart: `isAnimated animationDuration={500}` 추가
+
+### 도넛 레전드 2줄 레이아웃 + 스크롤
+
+- 기존 1줄(dot + 이름 + kg + %) → 2줄 레이아웃:
+  - 1줄: 품종·사이즈명 (굵게)
+  - 2줄: kg값 + % (서브 텍스트)
+- `ScrollView maxHeight: 88`로 2행 표시 후 스크롤 처리
+
+### 판매 내역 수량/단가 input 겹침 수정
+
+- `InputFormModal` 판매 항목 인라인 편집: row → column 레이아웃으로 변경
+- 수량/단가가 세로로 쌓여 겹침 없이 표시
+
+### CalendarModal 기간별 피커 모드
+
+- `mode` prop 추가: `'day' | 'week' | 'month' | 'year'`
+- **year**: 연도 그리드 (3열 × 4행, 12년 범위, 페이지 이동)
+- **month**: 월 그리드 (4열 × 3행, 연도 네비게이션)
+- **week**: 기존 달력 + 선택 주 전체 하이라이트
+- **day**: 기존 달력 (변경 없음)
+- 하단 Footer: "오늘" (primary) + "닫기" (secondary) 버튼으로 통일
+
+### 통계 기간별 캘린더 연동
+
+- 일별 → `mode='day'`, 주별 → `mode='week'`, 월별 → `mode='month'`, 연별 → `mode='year'`
+
+### 데이터 입력 날짜 캘린더
+
+- `input.tsx` 날짜 텍스트 탭 → `CalendarModal` 오픈 (기존: 오늘로 이동)
+
+---
+
 ## 2026-06-07 — 8차 작업 (판매 유형별 구분 저장 버그 수정)
 
 ### upsertSales sale_type 누락 수정

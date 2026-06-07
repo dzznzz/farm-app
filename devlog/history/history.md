@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-06-07 (9차) — UI 개선 (차트 애니메이션, 캘린더 기간별 모드, 레이아웃 수정)
+
+| 파일 | 변경 내용 |
+|---|---|
+| `app/(tabs)/statistics.tsx` | 도넛 2초 회전 애니메이션(Animated+Easing), BarChart isAnimated, 레전드 2줄 레이아웃+스크롤, CalendarModal mode 연동 |
+| `app/(tabs)/input.tsx` | 날짜 텍스트 탭 → CalendarModal 오픈 |
+| `components/modals/CalendarModal.tsx` | mode prop(day/week/month/year), year·month 그리드 피커, week 하이라이트, 오늘·닫기 Footer |
+| `components/modals/InputFormModal.tsx` | 판매 항목 수량·단가 row→column 레이아웃 (겹침 수정) |
+
+---
+
 ## 2026-06-07 (8차) — 판매 유형별 구분 저장 버그 수정
 
 | 파일 | 변경 내용 |

@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -205,6 +206,9 @@ export default function StatisticsScreen() {
   const [chartType, setChartType] = useState<'harvest' | 'revenue'>('harvest');
   const [donutTab, setDonutTab] = useState<'crop' | 'variety' | 'size'>('crop');
 
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const [isSpinning, setIsSpinning] = useState(false);
+
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showExport, setShowExport] = useState(false);
 
@@ -315,6 +319,25 @@ export default function StatisticsScreen() {
     label: item.key,
   }));
 
+  // 도넛 회전 애니메이션
+  useEffect(() => {
+    if (pieData.length === 0) return;
+    spinAnim.stopAnimation();
+    setIsSpinning(true);
+    spinAnim.setValue(0);
+    Animated.timing(spinAnim, {
+      toValue: 1,
+      duration: 500,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => { if (finished) setIsSpinning(false); });
+  }, [donutTab, donutData]);
+
+  const donutSpin = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
   const cur = periodSummary.current;
   const prev = periodSummary.previous;
   const py = periodSummary.previousYear;
@@ -420,27 +443,34 @@ export default function StatisticsScreen() {
           </View>
           {pieData.length > 0 ? (
             <View style={styles.donutBody}>
-              <PieChart donut data={pieData} radius={80} innerRadius={48} showText={false}
-                centerLabelComponent={() => (
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
-                    <Text style={{ fontSize: 9, color: Colors.textSub }}>kg</Text>
-                  </View>
-                )}
-              />
-              <View style={styles.donutLegend}>
+              <Animated.View style={{ transform: [{ rotate: donutSpin }] }}>
+                <PieChart donut data={pieData} radius={80} innerRadius={48} showText={false}
+                  centerLabelComponent={() => (
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
+                      <Text style={{ fontSize: 9, color: Colors.textSub }}>kg</Text>
+                    </View>
+                  )}
+                />
+              </Animated.View>
+              <ScrollView
+                style={[styles.donutLegend, { maxHeight: 130 }]}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              >
                 {pieData.map((item, i) => {
                   const pct = donutTotal > 0 ? ((item.value / donutTotal) * 100).toFixed(1) : '0';
                   return (
                     <View key={i} style={styles.donutLegendRow}>
                       <View style={[styles.donutDot, { backgroundColor: item.color }]} />
-                      <Text style={styles.donutLegendLabel} numberOfLines={1}>{item.label}</Text>
-                      <Text style={styles.donutLegendVal}>{item.value.toLocaleString()}kg</Text>
-                      <Text style={styles.donutLegendPct}>{pct}%</Text>
+                      <View style={styles.donutLegendText}>
+                        <Text style={styles.donutLegendLabel} numberOfLines={1}>{item.label}</Text>
+                        <Text style={styles.donutLegendSub}>{item.value.toLocaleString()}kg  {pct}%</Text>
+                      </View>
                     </View>
                   );
                 })}
-              </View>
+              </ScrollView>
             </View>
           ) : (
             <View style={styles.emptyChart}>
@@ -479,6 +509,7 @@ export default function StatisticsScreen() {
               xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
               noOfSections={4}
               maxValue={Math.max(...chartData.map((d) => d.value), 1) * 1.3}
+              isAnimated animationDuration={500}
             />
           )}
         </Card>
@@ -585,9 +616,14 @@ export default function StatisticsScreen() {
       {user && showExport && (
         <ExportModal visible={showExport} onClose={() => setShowExport(false)} userId={user.id} />
       )}
-      <CalendarModal visible={showDatePicker} value={selectedDate} maxDate={today}
+      <CalendarModal
+        visible={showDatePicker}
+        value={selectedDate}
+        maxDate={today}
+        mode={period === 'day' ? 'day' : period === 'week' ? 'week' : period === 'month' ? 'month' : 'year'}
         onSelect={(d) => { setSelectedDate(d); setShowDatePicker(false); }}
-        onClose={() => setShowDatePicker(false)} />
+        onClose={() => setShowDatePicker(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -644,11 +680,11 @@ const styles = StyleSheet.create({
   donutTabTextActive: { color: Colors.primaryDark, fontWeight: '700' },
   donutBody: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
   donutLegend: { flex: 1 },
-  donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  donutDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  donutLegendLabel: { fontSize: 12, color: Colors.text, flex: 1 },
-  donutLegendVal: { fontSize: 12, fontWeight: '700', color: Colors.primaryDark },
-  donutLegendPct: { fontSize: 11, color: Colors.textSub, width: 36, textAlign: 'right' },
+  donutLegendRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 8 },
+  donutDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0, marginTop: 3 },
+  donutLegendText: { flex: 1 },
+  donutLegendLabel: { fontSize: 12, fontWeight: '700', color: Colors.text },
+  donutLegendSub: { fontSize: 11, color: Colors.textSub, marginTop: 1, textAlign: 'right' },
   emptyChart: { alignItems: 'center', paddingVertical: 32 },
   emptyText: { ...Typography.body, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4, color: Colors.textLight },

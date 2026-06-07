@@ -4,6 +4,81 @@
 
 ---
 
+## 2026-06-07 (9차) — UI 개선
+
+### 1. 도넛 차트 회전 애니메이션 (`statistics.tsx`)
+
+`Animated.Value` + `Easing.out(Easing.cubic)` 2초 회전:
+
+```tsx
+const spinAnim = useRef(new Animated.Value(0)).current;
+const [isSpinning, setIsSpinning] = useState(false);
+
+useEffect(() => {
+  if (pieData.length === 0) return;
+  spinAnim.stopAnimation();
+  setIsSpinning(true);
+  spinAnim.setValue(0);
+  Animated.timing(spinAnim, {
+    toValue: 1, duration: 2000, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+  }).start(({ finished }) => { if (finished) setIsSpinning(false); });
+}, [donutTab, donutData]);
+
+const donutSpin = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+```
+
+- `Animated.View` + `transform: [{ rotate: donutSpin }]`로 PieChart 감싸기
+- 회전 중 `centerLabelComponent={isSpinning ? undefined : ...}` 으로 중앙 텍스트 숨김
+
+### 2. 도넛 레전드 2줄 레이아웃 + 스크롤 (`statistics.tsx`)
+
+- `ScrollView maxHeight: 88` 으로 2행 표시 후 스크롤
+- `donutLegendRow`: row → flex-start 정렬
+- `donutLegendText` 컬럼 래퍼 (flex: 1) 추가
+- 1줄: 품종·사이즈명 (`fontWeight: '700'`)
+- 2줄: `{kg}  {pct}%` 서브 텍스트
+
+### 3. 판매 항목 input 레이아웃 수정 (`InputFormModal.tsx`)
+
+수량 + 단가를 row → column 레이아웃으로 변경. 단가 `TextInput`의 `flex: 1`이 column 컨텍스트에서 세로로 팽창하던 문제 해결:
+
+```tsx
+// 변경 전: row 나란히 → 높이 불일치로 겹침 발생
+<View style={styles.entryEditRow}>  // flexDirection: 'row'
+  <View style={styles.entryEditGroup}>  // flex: 1 → 단가 입력 팽창
+
+// 변경 후: column 순서대로
+<View style={{ gap: 6 }}>
+  <View>  // 수량
+  <View>  // 단가 (flex: 0 오버라이드)
+```
+
+### 4. CalendarModal mode prop 추가 (`CalendarModal.tsx`)
+
+```tsx
+interface Props {
+  mode?: 'day' | 'week' | 'month' | 'year';  // 신규
+}
+```
+
+- **year**: 3열 그리드 (12년 범위), 페이지 이동 ±12년
+- **month**: 4열 그리드 (12개월), 연도 ±1 네비게이션
+- **week**: 기존 달력 + 선택 주(월~일) 전체 `cellInWeek` 배경 하이라이트
+- **Footer 공통화**: `"오늘"` (primary) + `"닫기"` (secondary) 버튼 row
+
+### 5. 통계 CalendarModal mode 연동 (`statistics.tsx`)
+
+```tsx
+mode={period === 'day' ? 'day' : period === 'week' ? 'week' : period === 'month' ? 'month' : 'year'}
+```
+
+### 6. 입력 탭 날짜 캘린더 연동 (`input.tsx`)
+
+- `CalendarModal` import + `showCalendar` state 추가
+- 날짜 텍스트 `onPress` → `setShowCalendar(true)` (기존: `setDate(today)`)
+
+---
+
 ## 2026-06-07 (8차) — 커밋 미포함 (현재 작업)
 
 ### upsertSales sale_type 구분 키 추가
