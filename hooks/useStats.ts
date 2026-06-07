@@ -258,7 +258,7 @@ export async function fetchSummary(userId: string) {
 
 export async function fetchBreakdown(
   userId: string, from: string, to: string, farmId?: string
-): Promise<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[] }> {
+): Promise<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[]; byVarietySize: BreakdownItem[] }> {
   const applyFarm = (q: any) => farmId ? q.eq('farm_id', farmId) : q;
   const [harvestRes, salesRes, otherRes] = await Promise.all([
     applyFarm(supabase.from('harvest_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to)),
@@ -279,9 +279,69 @@ export async function fetchBreakdown(
       .sort((a, b) => (b.harvest + b.sales) - (a.harvest + a.sales));
   }
 
+  const vsKey = (r: Row) => [r.variety, r.size].filter(Boolean).join(' · ') || '미입력';
   return {
     byCrop: mergeKeys(aggregate(harvestRes.data, r => r.crop_type ?? ''), aggregate(salesRes.data, r => r.crop_type ?? ''), aggregate(otherRes.data, r => r.crop_type ?? '')),
     byVariety: mergeKeys(aggregate(harvestRes.data, r => r.variety ?? ''), aggregate(salesRes.data, r => r.variety ?? ''), aggregate(otherRes.data, r => r.variety ?? '')),
     bySize: mergeKeys(aggregate(harvestRes.data, r => r.size ?? ''), aggregate(salesRes.data, r => r.size ?? ''), aggregate(otherRes.data, r => r.size ?? '')),
+    byVarietySize: mergeKeys(aggregate(harvestRes.data, vsKey), aggregate(salesRes.data, vsKey), aggregate(otherRes.data, vsKey)),
   };
+}
+
+// 커스텀 날짜 범위 요약
+export async function fetchPeriodSummaryForRange(
+  userId: string,
+  curFrom: string, curTo: string,
+  prevFrom: string, prevTo: string,
+  farmId?: string,
+): Promise<{ current: PeriodSummary; previous: PeriodSummary }> {
+  const [cH, cS, cO, cL, pH, pS] = await Promise.all([
+    applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
+    applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
+    applyFarm(supabase.from('other_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
+    supabase.from('labor_records').select('labor_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo),
+    applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
+    applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
+  ]);
+  const sum = (data: any[] | null, key: string) => data?.reduce((s: number, r: any) => s + (r[key] ?? 0), 0) ?? 0;
+  const curRevenue = sum(cS.data, 'total_revenue');
+  const curNet = curRevenue - sum(cS.data, 'commission_amount') - sum(cS.data, 'extra_cost');
+  const curLabor = cL.error ? 0 : sum(cL.data, 'labor_cost');
+  const curHarvest = sum(cH.data, 'quantity');
+  const curSales = sum(cS.data, 'quantity');
+  const prevRevenue = sum(pS.data, 'total_revenue');
+  return {
+    current: {
+      harvest: curHarvest, sales: curSales, revenue: curRevenue,
+      netRevenue: curNet - curLabor,
+      stock: curHarvest - curSales - sum(cO.data, 'quantity'),
+      laborCost: curLabor,
+    },
+    previous: {
+      harvest: sum(pH.data, 'quantity'), sales: sum(pS.data, 'quantity'),
+      revenue: prevRevenue,
+      netRevenue: prevRevenue - sum(pS.data, 'commission_amount') - sum(pS.data, 'extra_cost'),
+      stock: 0, laborCost: 0,
+    },
+  };
+}
+
+// 바차트용: 특정 날짜 범위의 일별 통계
+export async function fetchStatsForRange(userId: string, from: string, to: string, farmId?: string): Promise<DailyStat[]> {
+  const [harvestRes, salesRes] = await Promise.all([
+    applyFarm(supabase.from('harvest_records').select('date, quantity').eq('user_id', userId).gte('date', from).lte('date', to).order('date'), farmId),
+    applyFarm(supabase.from('sales_records').select('date, quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', from).lte('date', to).order('date'), farmId),
+  ]);
+  const map: Record<string, DailyStat> = {};
+  harvestRes.data?.forEach((r: any) => {
+    if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 };
+    map[r.date].harvest += r.quantity;
+  });
+  salesRes.data?.forEach((r: any) => {
+    if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 };
+    map[r.date].sales += r.quantity;
+    map[r.date].revenue += r.total_revenue;
+    map[r.date].netRevenue += r.total_revenue - (r.commission_amount ?? 0) - (r.extra_cost ?? 0);
+  });
+  return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
 }

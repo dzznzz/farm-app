@@ -8,7 +8,7 @@ import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { BarChart, PieChart } from 'react-native-gifted-charts';
 import { useAuth } from '../../hooks/useAuth';
 import {
-  useStats, getCurrentAndPrevRange, fetchPeriodSummary,
+  fetchPeriodSummaryForRange, fetchStatsForRange,
   fetchPriceHistory, fetchBreakdown, PeriodSummary, PricePoint,
 } from '../../hooks/useStats';
 import { BreakdownItem } from '../../types';
@@ -37,12 +37,93 @@ const COMPARE_LABELS: Record<PeriodType, { revenue: string; harvest: string }> =
 
 const DONUT_COLORS = ['#7C5CBF', '#A07BD4', '#5B8DD9', '#7EC8A0', '#E89F5D', '#D96B6B'];
 
+// ── 선택 날짜 + 기간 → 범위 계산 ──
+interface DateRange {
+  from: string; to: string;
+  prevFrom: string; prevTo: string;
+  prevYearFrom?: string; prevYearTo?: string;
+  label: string;
+}
+
+function computeSelectedRange(date: string, period: PeriodType): DateRange {
+  if (period === 'day') {
+    const prev = new Date(date); prev.setDate(prev.getDate() - 1);
+    const prevStr = prev.toISOString().split('T')[0];
+    const d = new Date(date);
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    return {
+      from: date, to: date, prevFrom: prevStr, prevTo: prevStr,
+      label: `${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`,
+    };
+  }
+  if (period === 'week') {
+    const d = new Date(date);
+    const dow = d.getDay();
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+    const from = monday.toISOString().split('T')[0];
+    const to = sunday.toISOString().split('T')[0];
+    const prevMonday = new Date(monday); prevMonday.setDate(monday.getDate() - 7);
+    const prevSunday = new Date(prevMonday); prevSunday.setDate(prevMonday.getDate() + 6);
+    const weekNum = Math.ceil(monday.getDate() / 7);
+    return {
+      from, to,
+      prevFrom: prevMonday.toISOString().split('T')[0],
+      prevTo: prevSunday.toISOString().split('T')[0],
+      label: `${monday.getMonth() + 1}월 ${weekNum}주차`,
+    };
+  }
+  if (period === 'month') {
+    const [year, month] = date.split('-').map(Number);
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const prevM = month === 1 ? 12 : month - 1;
+    const prevY = month === 1 ? year - 1 : year;
+    const prevLastDay = new Date(prevY, prevM, 0).getDate();
+    const pyLastDay = new Date(year - 1, month, 0).getDate();
+    return {
+      from, to,
+      prevFrom: `${prevY}-${String(prevM).padStart(2, '0')}-01`,
+      prevTo: `${prevY}-${String(prevM).padStart(2, '0')}-${String(prevLastDay).padStart(2, '0')}`,
+      prevYearFrom: `${year - 1}-${String(month).padStart(2, '0')}-01`,
+      prevYearTo: `${year - 1}-${String(month).padStart(2, '0')}-${String(pyLastDay).padStart(2, '0')}`,
+      label: `${year}년 ${month}월`,
+    };
+  }
+  // year
+  const year = parseInt(date.slice(0, 4));
+  return {
+    from: `${year}-01-01`, to: `${year}-12-31`,
+    prevFrom: `${year - 1}-01-01`, prevTo: `${year - 1}-12-31`,
+    label: `${year}년`,
+  };
+}
+
+function navigatePeriod(date: string, period: PeriodType, dir: 1 | -1): string {
+  const d = new Date(date);
+  if (period === 'day') d.setDate(d.getDate() + dir);
+  else if (period === 'week') d.setDate(d.getDate() + dir * 7);
+  else if (period === 'month') d.setMonth(d.getMonth() + dir);
+  else d.setFullYear(d.getFullYear() + dir);
+  return d.toISOString().split('T')[0];
+}
+
+function getBarFrom(to: string, period: PeriodType): string {
+  const d = new Date(to);
+  if (period === 'day') d.setDate(d.getDate() - 6);
+  else if (period === 'week') d.setDate(d.getDate() - 6 * 7);
+  else if (period === 'month') d.setMonth(d.getMonth() - 6);
+  else d.setFullYear(d.getFullYear() - 6);
+  return d.toISOString().split('T')[0];
+}
+
 function fillFullRange(grouped: DailyStat[], period: PeriodType, from: string, to: string): DailyStat[] {
   const map: Record<string, DailyStat> = {};
   grouped.forEach(d => { map[d.date] = d; });
   const empty = (date: string): DailyStat => ({ date, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 });
   const result: DailyStat[] = [];
-
   if (period === 'day') {
     const start = new Date(from); const end = new Date(to);
     for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1))
@@ -69,18 +150,6 @@ function fillFullRange(grouped: DailyStat[], period: PeriodType, from: string, t
     for (let y = sy; y <= ey; y++) result.push(map[String(y)] ?? empty(String(y)));
   }
   return result;
-}
-
-// 막대 차트용 범위: 오늘 기준 7개 period 뒤로
-function getBarChartRange(period: PeriodType): { from: string; to: string } {
-  const today = new Date();
-  const to = today.toISOString().split('T')[0];
-  const from = new Date(today);
-  if (period === 'day')   from.setDate(from.getDate() - 6);
-  else if (period === 'week')  from.setDate(from.getDate() - 6 * 7);
-  else if (period === 'month') from.setMonth(from.getMonth() - 6);
-  else                         from.setFullYear(from.getFullYear() - 6);
-  return { from: from.toISOString().split('T')[0], to };
 }
 
 function groupStats(stats: DailyStat[], period: PeriodType): DailyStat[] {
@@ -128,31 +197,32 @@ const EMPTY_SUMMARY: PeriodSummary = { harvest: 0, sales: 0, revenue: 0, netReve
 export default function StatisticsScreen() {
   const { user } = useAuth();
   const { period: paramPeriod } = useLocalSearchParams<{ period?: string }>();
+  const today = new Date().toISOString().split('T')[0];
+
   const [period, setPeriod] = useState<PeriodType>((paramPeriod as PeriodType) ?? 'day');
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   const [chartType, setChartType] = useState<'harvest' | 'revenue'>('harvest');
+  const [donutTab, setDonutTab] = useState<'crop' | 'variety' | 'size'>('crop');
+
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showExport, setShowExport] = useState(false);
-  const [donutTab, setDonutTab] = useState<'crop' | 'variety' | 'size'>('crop');
-  const todayStr = new Date().toISOString().split('T')[0];
-  const d30Str = (() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().split('T')[0]; })();
-  const [donutFrom, setDonutFrom] = useState(d30Str);
-  const [donutTo, setDonutTo] = useState(todayStr);
-  const [showDonutFromCal, setShowDonutFromCal] = useState(false);
-  const [showDonutToCal, setShowDonutToCal] = useState(false);
-  const [donutData, setDonutData] = useState<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[] } | null>(null);
 
   // 농장 필터
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string | undefined>(undefined);
 
-  const { stats, loading, fetchStats } = useStats(user?.id, selectedFarmId);
-
   const [periodSummary, setPeriodSummary] = useState<{
-    current: PeriodSummary;
-    previous: PeriodSummary;
-    previousYear?: PeriodSummary;
+    current: PeriodSummary; previous: PeriodSummary; previousYear?: PeriodSummary;
   }>({ current: EMPTY_SUMMARY, previous: EMPTY_SUMMARY });
   const [summaryLoading, setSummaryLoading] = useState(false);
+
+  const [barStats, setBarStats] = useState<DailyStat[]>([]);
+  const [barLoading, setBarLoading] = useState(false);
+
+  const [donutData, setDonutData] = useState<Awaited<ReturnType<typeof fetchBreakdown>> | null>(null);
+
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
 
   useEffect(() => {
@@ -161,24 +231,45 @@ export default function StatisticsScreen() {
       .then(({ data }) => setFarms(data ?? []));
   }, [user]);
 
-  const loadAll = useCallback(async (p: PeriodType) => {
+  const loadAll = useCallback(async (p: PeriodType, date: string) => {
     if (!user) return;
-    fetchStats(p);
+    const range = computeSelectedRange(date, p);
+    const { from: curF, to: curT, prevFrom: prevF, prevTo: prevT } = range;
+
     setSummaryLoading(true);
-    // 단가 히스토리는 기간 탭과 무관하게 최근 30일 고정
-    const today = new Date().toISOString().split('T')[0];
+    setBarLoading(true);
+
+    const barF = getBarFrom(curT, p);
     const d30 = new Date(); d30.setDate(d30.getDate() - 30);
     const priceFrom = d30.toISOString().split('T')[0];
-    const [result, prices] = await Promise.all([
-      fetchPeriodSummary(user.id, p, selectedFarmId),
+
+    const [summaryResult, statsData, breakdownResult, prices] = await Promise.all([
+      fetchPeriodSummaryForRange(user.id, curF, curT, prevF, prevT, selectedFarmId),
+      fetchStatsForRange(user.id, barF, curT, selectedFarmId),
+      fetchBreakdown(user.id, curF, curT, selectedFarmId),
       fetchPriceHistory(user.id, priceFrom, today, selectedFarmId),
     ]);
-    setPeriodSummary(result);
+
+    let previousYear: PeriodSummary | undefined;
+    if (p === 'month' && range.prevYearFrom && range.prevYearTo) {
+      const pyResult = await fetchPeriodSummaryForRange(
+        user.id, range.prevYearFrom, range.prevYearTo,
+        range.prevYearFrom, range.prevYearTo, selectedFarmId
+      );
+      previousYear = pyResult.current;
+    }
+
+    setPeriodSummary({ current: summaryResult.current, previous: summaryResult.previous, previousYear });
+    setBarStats(statsData);
+    setDonutData(breakdownResult);
     setPriceHistory(prices);
     setSummaryLoading(false);
-  }, [user, fetchStats, selectedFarmId]);
+    setBarLoading(false);
+  }, [user, selectedFarmId]);
 
-  useEffect(() => { loadAll(period); }, [period, user?.id, selectedFarmId]);
+  useEffect(() => {
+    loadAll(period, selectedDate);
+  }, [period, selectedDate, selectedFarmId, user?.id]);
 
   useEffect(() => {
     if (paramPeriod && ['day', 'week', 'month', 'year'].includes(paramPeriod)) {
@@ -186,18 +277,15 @@ export default function StatisticsScreen() {
     }
   }, [paramPeriod]);
 
-  useFocusEffect(useCallback(() => { loadAll(period); }, [period, loadAll]));
+  useFocusEffect(useCallback(() => { loadAll(period, selectedDate); }, [period, selectedDate, loadAll]));
 
-  // 도넛 차트: 날짜 지정 breakdown 독립 fetch
-  useEffect(() => {
-    if (!user) return;
-    fetchBreakdown(user.id, donutFrom, donutTo, selectedFarmId).then(setDonutData);
-  }, [user, donutFrom, donutTo, selectedFarmId]);
+  // ── 파생 계산값 ──
+  const range = computeSelectedRange(selectedDate, period);
+  const { from: curFrom, to: curTo, label: rangeLabel } = range;
+  const barFrom = getBarFrom(curTo, period);
 
-  const { curFrom, curTo } = getCurrentAndPrevRange(period);
-  const grouped = groupStats(stats, period);
-  const { from: barFrom, to: barTo } = getBarChartRange(period);
-  const fullRange = fillFullRange(grouped, period, barFrom, barTo);
+  const grouped = groupStats(barStats, period);
+  const fullRange = fillFullRange(grouped, period, barFrom, curTo);
   const chartData = fullRange.map((s) => {
     const val = chartType === 'harvest' ? s.harvest : s.revenue / 10000;
     const hasVal = val > 0;
@@ -214,9 +302,12 @@ export default function StatisticsScreen() {
       ) : undefined,
     };
   });
-  // 도넛 차트 데이터
+
+  // 도넛 데이터
   const donutItems = donutData
-    ? (donutTab === 'crop' ? donutData.byCrop : donutTab === 'variety' ? donutData.byVariety : donutData.bySize)
+    ? (donutTab === 'crop' ? donutData.byCrop
+      : donutTab === 'variety' ? donutData.byVariety
+      : donutData.byVarietySize)
     : [];
   const donutTotal = donutItems.reduce((s, i) => s + i.harvest, 0);
   const pieData = donutItems.slice(0, 6).filter(i => i.harvest > 0).map((item, i) => ({
@@ -229,7 +320,6 @@ export default function StatisticsScreen() {
   const prev = periodSummary.previous;
   const py = periodSummary.previousYear;
   const labels = COMPARE_LABELS[period];
-
   const revenueRate = prev.revenue > 0 ? ((cur.revenue - prev.revenue) / prev.revenue) * 100 : null;
   const harvestRate = prev.harvest > 0 ? ((cur.harvest - prev.harvest) / prev.harvest) * 100 : null;
   const pyRevenueRate = py && py.revenue > 0 ? ((cur.revenue - py.revenue) / py.revenue) * 100 : null;
@@ -239,37 +329,46 @@ export default function StatisticsScreen() {
     <SafeAreaView style={styles.container}>
       <LinearGradient colors={[Colors.primaryUltraLight, Colors.background]} style={styles.headerGradient}>
         <Text style={styles.title}>통계</Text>
+
+        {/* 기간 탭 */}
         <View style={styles.periodTabs}>
           {PERIODS.map((p) => (
-            <TouchableOpacity
-              key={p.key}
+            <TouchableOpacity key={p.key}
               style={[styles.periodBtn, period === p.key && styles.periodBtnActive]}
-              onPress={() => setPeriod(p.key)}
-            >
+              onPress={() => setPeriod(p.key)}>
               <Text style={[styles.periodText, period === p.key && styles.periodTextActive]}>{p.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* 농장 필터 (2개 이상일 때만 표시) */}
+        {/* 날짜 네비게이터 */}
+        <View style={styles.dateNav}>
+          <TouchableOpacity style={styles.dateNavArrowBtn}
+            onPress={() => setSelectedDate(navigatePeriod(selectedDate, period, -1))}>
+            <Text style={styles.dateNavArrow}>‹</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.dateNavLabel} onPress={() => setShowDatePicker(true)}>
+            <Text style={styles.dateNavText}>{rangeLabel}</Text>
+            <Text style={styles.dateNavHint}>탭하여 날짜 선택</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.dateNavArrowBtn}
+            onPress={() => setSelectedDate(navigatePeriod(selectedDate, period, 1))}>
+            <Text style={styles.dateNavArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 농장 필터 */}
         {farms.length >= 2 && (
-          <ScrollView
-            horizontal showsHorizontalScrollIndicator={false}
-            style={styles.farmFilterScroll}
-            contentContainerStyle={styles.farmFilterContent}
-          >
-            <TouchableOpacity
-              style={[styles.farmChip, !selectedFarmId && styles.farmChipActive]}
-              onPress={() => setSelectedFarmId(undefined)}
-            >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            style={styles.farmFilterScroll} contentContainerStyle={styles.farmFilterContent}>
+            <TouchableOpacity style={[styles.farmChip, !selectedFarmId && styles.farmChipActive]}
+              onPress={() => setSelectedFarmId(undefined)}>
               <Text style={[styles.farmChipText, !selectedFarmId && styles.farmChipTextActive]}>전체</Text>
             </TouchableOpacity>
             {farms.map((f) => (
-              <TouchableOpacity
-                key={f.id}
+              <TouchableOpacity key={f.id}
                 style={[styles.farmChip, selectedFarmId === f.id && styles.farmChipActive]}
-                onPress={() => setSelectedFarmId(f.id)}
-              >
+                onPress={() => setSelectedFarmId(f.id)}>
                 <Text style={[styles.farmChipText, selectedFarmId === f.id && styles.farmChipTextActive]}>{f.name}</Text>
               </TouchableOpacity>
             ))}
@@ -305,25 +404,13 @@ export default function StatisticsScreen() {
           </View>
         )}
 
-        {/* ── 도넛 차트 카드 (전체 너비) ── */}
+        {/* 도넛 차트 */}
         <Card style={styles.chartCard}>
           <View style={styles.chartHeader}>
             <Text style={Typography.h3}>구성 비율</Text>
-            {/* 날짜 지정 */}
-            <View style={styles.donutDateRow}>
-              <TouchableOpacity style={styles.donutDateBtn} onPress={() => setShowDonutFromCal(true)}>
-                <Text style={styles.donutDateText}>{donutFrom.slice(5).replace('-', '/')}</Text>
-              </TouchableOpacity>
-              <Text style={styles.donutDateSep}>~</Text>
-              <TouchableOpacity style={styles.donutDateBtn} onPress={() => setShowDonutToCal(true)}>
-                <Text style={styles.donutDateText}>{donutTo.slice(5).replace('-', '/')}</Text>
-              </TouchableOpacity>
-            </View>
           </View>
-
-          {/* 도넛 탭 */}
           <View style={styles.donutTabs}>
-            {([['crop', '작물별'], ['variety', '품종별'], ['size', '사이즈별']] as const).map(([k, l]) => (
+            {([['crop', '작물별'], ['variety', '품종별'], ['size', '품종·사이즈별']] as const).map(([k, l]) => (
               <TouchableOpacity key={k}
                 style={[styles.donutTab, donutTab === k && styles.donutTabActive]}
                 onPress={() => setDonutTab(k)}>
@@ -331,20 +418,12 @@ export default function StatisticsScreen() {
               </TouchableOpacity>
             ))}
           </View>
-
           {pieData.length > 0 ? (
             <View style={styles.donutBody}>
-              <PieChart
-                donut
-                data={pieData}
-                radius={80}
-                innerRadius={48}
-                showText={false}
+              <PieChart donut data={pieData} radius={80} innerRadius={48} showText={false}
                 centerLabelComponent={() => (
                   <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>
-                      {donutTotal.toLocaleString()}
-                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
                     <Text style={{ fontSize: 9, color: Colors.textSub }}>kg</Text>
                   </View>
                 )}
@@ -366,12 +445,12 @@ export default function StatisticsScreen() {
           ) : (
             <View style={styles.emptyChart}>
               <Text style={styles.emptyText}>데이터가 없습니다</Text>
-              <Text style={styles.emptySubText}>날짜 범위를 조정하거나 입력 탭에서 데이터를 추가하세요</Text>
+              <Text style={styles.emptySubText}>위 날짜 네비게이터로 기간을 변경해보세요</Text>
             </View>
           )}
         </Card>
 
-        {/* ── 막대 차트 카드 (전체 너비) ── */}
+        {/* 막대 차트 */}
         <Card style={styles.chartCard}>
           <View style={styles.chartHeader}>
             <Text style={Typography.h3}>{chartType === 'harvest' ? '수확량 추이' : '매출 추이'}</Text>
@@ -387,7 +466,7 @@ export default function StatisticsScreen() {
               ))}
             </View>
           </View>
-          {loading ? (
+          {barLoading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginVertical: 40 }} />
           ) : (
             <BarChart
@@ -407,8 +486,6 @@ export default function StatisticsScreen() {
         {/* 기간 비교 */}
         <Card style={styles.compareCard}>
           <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>기간 비교</Text>
-
-          {/* 전기 대비 */}
           <View style={styles.compareRow}>
             <Text style={styles.compareLabel}>{labels.revenue}</Text>
             <View style={styles.compareRight}>
@@ -423,8 +500,6 @@ export default function StatisticsScreen() {
               {harvestRate !== null ? <StatBadge value={harvestRate} /> : <Text style={styles.noDataText}>이전 데이터 없음</Text>}
             </View>
           </View>
-
-          {/* 작년 동월 비교 (월별 모드에서만 표시) */}
           {period === 'month' && py && (
             <>
               <View style={styles.compareDivider}>
@@ -450,7 +525,7 @@ export default function StatisticsScreen() {
 
         {/* 잔여 재고 */}
         <Card style={styles.stockCard}>
-          <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>잔여 재고 (이번 기간)</Text>
+          <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>잔여 재고 (선택 기간)</Text>
           <View style={styles.stockRow}>
             <View style={styles.stockItem}>
               <Text style={styles.stockLabel}>수확량</Text>
@@ -478,7 +553,7 @@ export default function StatisticsScreen() {
           </View>
         </Card>
 
-        {/* 최근 판매 단가 추이 */}
+        {/* 최근 판매 단가 */}
         {priceHistory.length > 0 && (
           <Card style={styles.priceCard}>
             <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>최근 판매 단가</Text>
@@ -496,31 +571,23 @@ export default function StatisticsScreen() {
           <Text style={styles.breakdownBtnText}>📊 작물·품종·사이즈별 상세 분석</Text>
           <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={[styles.breakdownBtn, { marginTop: Spacing.sm }]} onPress={() => setShowExport(true)}>
           <Text style={styles.breakdownBtnText}>📥 Google Sheets로 월간 데이터 내보내기</Text>
           <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
         </TouchableOpacity>
-
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
 
       {user && showBreakdown && (
-        <BreakdownModal
-          visible={showBreakdown} onClose={() => setShowBreakdown(false)}
-          userId={user.id} from={curFrom} to={curTo} farmId={selectedFarmId}
-        />
+        <BreakdownModal visible={showBreakdown} onClose={() => setShowBreakdown(false)}
+          userId={user.id} from={curFrom} to={curTo} farmId={selectedFarmId} />
       )}
       {user && showExport && (
         <ExportModal visible={showExport} onClose={() => setShowExport(false)} userId={user.id} />
       )}
-
-      <CalendarModal visible={showDonutFromCal} value={donutFrom}
-        onSelect={(d) => { setDonutFrom(d); setShowDonutFromCal(false); }}
-        onClose={() => setShowDonutFromCal(false)} />
-      <CalendarModal visible={showDonutToCal} value={donutTo}
-        onSelect={(d) => { setDonutTo(d); setShowDonutToCal(false); }}
-        onClose={() => setShowDonutToCal(false)} />
+      <CalendarModal visible={showDatePicker} value={selectedDate}
+        onSelect={(d) => { setSelectedDate(d); setShowDatePicker(false); }}
+        onClose={() => setShowDatePicker(false)} />
     </SafeAreaView>
   );
 }
@@ -528,16 +595,26 @@ export default function StatisticsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   headerGradient: { paddingBottom: Spacing.md },
-  title: { ...Typography.h2, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, marginBottom: Spacing.md },
+  title: { ...Typography.h2, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, marginBottom: Spacing.sm },
   periodTabs: {
     flexDirection: 'row', marginHorizontal: Spacing.lg,
-    backgroundColor: Colors.border, borderRadius: Radius.full, padding: 3,
+    backgroundColor: Colors.border, borderRadius: Radius.full, padding: 3, marginBottom: Spacing.sm,
   },
   periodBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: Radius.full },
   periodBtnActive: { backgroundColor: Colors.surface },
   periodText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
   periodTextActive: { color: Colors.primary },
-  farmFilterScroll: { marginTop: Spacing.sm },
+  // 날짜 네비게이터
+  dateNav: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm,
+  },
+  dateNavArrowBtn: { padding: 8 },
+  dateNavArrow: { fontSize: 28, color: Colors.primary, fontWeight: '300' },
+  dateNavLabel: { flex: 1, alignItems: 'center' },
+  dateNavText: { fontSize: 17, fontWeight: '800', color: Colors.text },
+  dateNavHint: { fontSize: 10, color: Colors.textLight, marginTop: 1 },
+  farmFilterScroll: { marginTop: Spacing.xs },
   farmFilterContent: { paddingHorizontal: Spacing.lg, gap: 6 },
   farmChip: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.full,
@@ -559,23 +636,17 @@ const styles = StyleSheet.create({
   chartTypeBtnActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
   chartTypeText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   chartTypeTextActive: { color: Colors.primary },
-  // 도넛 날짜 선택
-  donutDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  donutDateBtn: { backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.primaryLight },
-  donutDateText: { fontSize: 13, fontWeight: '700', color: Colors.primaryDark },
-  donutDateSep: { fontSize: 13, color: Colors.textSub },
-  // 도넛 탭
+  // 도넛
   donutTabs: { flexDirection: 'row', gap: 6, marginBottom: Spacing.md },
   donutTab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   donutTabActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
   donutTabText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   donutTabTextActive: { color: Colors.primaryDark, fontWeight: '700' },
-  // 도넛 본문
   donutBody: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
   donutLegend: { flex: 1 },
   donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   donutDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  donutLegendLabel: { fontSize: 13, color: Colors.text, flex: 1 },
+  donutLegendLabel: { fontSize: 12, color: Colors.text, flex: 1 },
   donutLegendVal: { fontSize: 12, fontWeight: '700', color: Colors.primaryDark },
   donutLegendPct: { fontSize: 11, color: Colors.textSub, width: 36, textAlign: 'right' },
   emptyChart: { alignItems: 'center', paddingVertical: 32 },
