@@ -38,15 +38,17 @@ interface Props {
 const BLUEBERRY_SIZES = ['대', '특', '왕특', '왕왕특'];
 const DEFAULT_UNITS = ['kg', '박스'];
 
+const SALE_TYPE_OPTIONS = ['온라인', '오프라인', '지인판매', '기타'];
+
 function getStepIds(tab: TabType): string[] {
   if (tab === 'harvest') return ['date', 'farm', 'crop', 'entries'];
-  if (tab === 'sales')   return ['date', 'farm', 'crop', 'entries'];
+  if (tab === 'sales')   return ['date', 'farm', 'saleType', 'crop', 'entries'];
   return                        ['date', 'farm', 'otherType', 'crop', 'entries'];
 }
 
 function getStepLabel(id: string, tab: TabType): string {
   const map: Record<string, string> = {
-    date: '날짜', farm: '농장', crop: '작물', otherType: '구분',
+    date: '날짜', farm: '농장', crop: '작물', otherType: '구분', saleType: '판매 유형',
     entries: tab === 'harvest' ? '수확 내역' : tab === 'sales' ? '판매 내역' : '수량 내역',
   };
   return map[id] ?? id;
@@ -305,6 +307,8 @@ export function InputFormModal({
   const [extraCost, setExtraCost] = useState('');
   const [buyer, setBuyer] = useState('');
   const [recipient, setRecipient] = useState('');
+  const [saleType, setSaleType] = useState('');
+  const [customSaleType, setCustomSaleType] = useState('');
   const [otherExtraCost, setOtherExtraCost] = useState('');
   const [note, setNote] = useState('');
 
@@ -331,6 +335,7 @@ export function InputFormModal({
     setWorkers([]); setWName(''); setWHours(''); setWCost(''); setWorkerError('');
     setPricePerUnit(''); setCommissionRate(''); setCommissionType('%'); setExtraCost(''); setBuyer('');
     setRecipient(''); setOtherExtraCost(''); setNote('');
+    setSaleType(''); setCustomSaleType('');
   };
 
   // 단일 레코드 수정 모드 / create 모드 날짜 동기화
@@ -365,6 +370,30 @@ export function InputFormModal({
     if (first.farmId) setFarmId(first.farmId);
     setCropType(first.cropType ?? '');
     if (tab === 'other') setOtherType((first.otherSubType as OtherType) ?? 'gift');
+
+    if (tab === 'sales') {
+      // 수수료 타입 판별
+      const rate = first.commissionRate ?? 0;
+      const amount = first.commissionAmount ?? 0;
+      if (rate > 0) {
+        setCommissionType('%'); setCommissionRate(String(rate));
+      } else if (amount > 0) {
+        setCommissionType('원'); setCommissionRate(String(amount));
+      } else {
+        setCommissionType('%'); setCommissionRate('');
+      }
+      setExtraCost(first.extraCost != null && first.extraCost > 0 ? String(first.extraCost) : '');
+      setBuyer(first.buyer ?? '');
+      // 판매 유형
+      const st = (first as any).saleType ?? '';
+      if (SALE_TYPE_OPTIONS.slice(0, -1).includes(st)) {
+        setSaleType(st); setCustomSaleType('');
+      } else if (st) {
+        setSaleType('기타'); setCustomSaleType(st);
+      } else {
+        setSaleType(''); setCustomSaleType('');
+      }
+    }
 
     const preEntries: Entry[] = groupEditRecords.map(r => ({
       variety: r.variety ?? '',
@@ -407,8 +436,11 @@ export function InputFormModal({
       });
   }, [cropType]);
 
+  const resolvedSaleType = saleType === '기타' ? customSaleType.trim() : saleType;
+
   const isStepValid = (id: string): boolean => {
     if (id === 'date' || id === 'otherType' || id === 'farm') return true;
+    if (id === 'saleType') return !!resolvedSaleType;
     if (id === 'crop') return !!cropType.trim();
     if (id === 'entries') return entries.length > 0;
     return true;
@@ -563,10 +595,18 @@ export function InputFormModal({
               }).eq('id', e.existingId).throwOnError();
             } else if (tab === 'sales') {
               const price = parseFloat(e.price ?? '0');
+              const cInput2 = parseFloat(commissionRate || '0') || 0;
+              const rev2 = qty * price;
+              const cAmt2 = commissionType === '%' ? rev2 * cInput2 / 100 : cInput2;
               await supabase.from('sales_records').update({
                 farm_id: farmId || null, date, crop_type: cropType || null,
                 variety: e.variety || null, size: e.size || null,
-                quantity: qty, price_per_unit: price, total_revenue: qty * price,
+                quantity: qty, price_per_unit: price, total_revenue: rev2,
+                commission_rate: commissionType === '%' ? cInput2 : 0,
+                commission_amount: cAmt2,
+                extra_cost: parseFloat(extraCost || '0') || 0,
+                buyer: buyer || null,
+                sale_type: resolvedSaleType || null,
               }).eq('id', e.existingId).throwOnError();
             } else {
               await supabase.from('other_records').update({
@@ -582,7 +622,9 @@ export function InputFormModal({
             } else if (tab === 'sales') {
               const price = parseFloat(e.price ?? '0');
               const rev = qty * price;
-              await upsertSales({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, price_per_unit: price, total_revenue: rev, buyer: buyer || null, commission_rate: 0, commission_amount: 0, extra_cost: 0 });
+              const cIn = parseFloat(commissionRate || '0') || 0;
+              const cAmtN = commissionType === '%' ? rev * cIn / 100 : cIn;
+              await upsertSales({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, price_per_unit: price, total_revenue: rev, buyer: buyer || null, commission_rate: commissionType === '%' ? cIn : 0, commission_amount: cAmtN, extra_cost: parseFloat(extraCost || '0') || 0, sale_type: resolvedSaleType || null });
             } else {
               await upsertOther({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, unit: e.unit, type: otherType, recipient: otherType === 'gift' ? (recipient || null) : null, extra_cost: null, note: note || null });
             }
@@ -620,6 +662,7 @@ export function InputFormModal({
               price_per_unit: price, total_revenue: rev, buyer: buyer || null,
               commission_rate: commissionType === '%' ? cInput : 0,
               commission_amount: cAmt, extra_cost: eCost,
+              sale_type: resolvedSaleType || null,
             });
           }
         } else {
@@ -1053,6 +1096,26 @@ export function InputFormModal({
                             </TouchableOpacity>
                           ))}
                         </View>
+                      )}
+
+                      {stepId === 'saleType' && (
+                        <>
+                          <View style={styles.chipRow}>
+                            {SALE_TYPE_OPTIONS.map((t) => (
+                              <TouchableOpacity key={t}
+                                style={[styles.chip, saleType === t && styles.chipActive]}
+                                onPress={() => { setSaleType(t); if (t !== '기타') setCustomSaleType(''); }}>
+                                <Text style={[styles.chipText, saleType === t && styles.chipTextActive]}>{t}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          {saleType === '기타' && (
+                            <TextInput style={[styles.input, { marginTop: 8 }]}
+                              value={customSaleType} onChangeText={setCustomSaleType}
+                              placeholder="판매 유형 직접 입력" placeholderTextColor={Colors.textLight}
+                              autoFocus />
+                          )}
+                        </>
                       )}
                       {stepId === 'crop' && (
                         <TextInput style={styles.input} value={cropType} onChangeText={setCropType}

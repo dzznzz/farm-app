@@ -33,6 +33,38 @@ function formatDisplayDate(dateStr: string) {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
 }
 
+// ── 판매 묶음 그룹 (buyer + saleType 기준) ──
+type SaleGroup = {
+  farmId: string | null; farmName: string | null; cropType: string;
+  saleType?: string | null; buyer?: string | null;
+  records: DisplayRecord[];
+  totalQty: number; totalRevenue: number; totalCommission: number; totalExtra: number;
+};
+
+function groupSalesRecords(records: DisplayRecord[]): SaleGroup[] {
+  const groups: SaleGroup[] = [];
+  for (const r of records) {
+    const gKey = `${r.farmId ?? ''}::${r.cropType ?? ''}::${r.buyer ?? ''}::${r.saleType ?? ''}`;
+    let group = groups.find(g =>
+      `${g.farmId ?? ''}::${g.cropType}::${g.buyer ?? ''}::${g.saleType ?? ''}` === gKey
+    );
+    if (!group) {
+      group = {
+        farmId: r.farmId ?? null, farmName: r.farmName ?? null,
+        cropType: r.cropType ?? '', saleType: r.saleType, buyer: r.buyer,
+        records: [], totalQty: 0, totalRevenue: 0, totalCommission: 0, totalExtra: 0,
+      };
+      groups.push(group);
+    }
+    group.records.push(r);
+    group.totalQty += r.quantity;
+    group.totalRevenue += r.totalRevenue ?? 0;
+    group.totalCommission += r.commissionAmount ?? 0;
+    group.totalExtra += r.extraCost ?? 0;
+  }
+  return groups;
+}
+
 // ── Grouping types & logic ──
 type SizeRow = { size: string; quantity: number; unit: string; revenue?: number; ids: string[] };
 type VarietyGroup = { variety: string; sizes: SizeRow[] };
@@ -109,7 +141,7 @@ export default function InputScreen() {
         .select('id, date, farm_id, crop_type, variety, size, quantity, unit, note, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
       supabase.from('sales_records')
-        .select('id, date, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, created_at')
+        .select('id, date, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, sale_type, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
       supabase.from('other_records')
         .select('id, date, farm_id, crop_type, variety, size, quantity, unit, type, recipient, extra_cost, note, created_at')
@@ -133,7 +165,7 @@ export default function InputScreen() {
         quantity: r.quantity, unit: null,
         pricePerUnit: r.price_per_unit, totalRevenue: r.total_revenue,
         commissionRate: r.commission_rate, commissionAmount: r.commission_amount,
-        extraCost: r.extra_cost, buyer: r.buyer,
+        extraCost: r.extra_cost, buyer: r.buyer, saleType: r.sale_type,
       })),
       ...(oRes.data ?? []).map((r: any): DisplayRecord => ({
         id: r.id, type: 'other', date: r.date,
@@ -159,9 +191,10 @@ export default function InputScreen() {
 
   const filtered = records.filter((r) => r.type === tab);
   const grouped = groupByFarmCrop(filtered, tab);
+  const saleGroups = groupSalesRecords(filtered);
 
-  const openGroupEdit = (group: FarmCropGroup) => {
-    setGroupEditRecords(group.allRecords);
+  const openGroupEdit = (records: DisplayRecord[]) => {
+    setGroupEditRecords(records);
     setEditRecord(undefined);
     setShowForm(true);
   };
@@ -207,7 +240,7 @@ export default function InputScreen() {
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView style={styles.scroll} contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}>
-          {grouped.length === 0 ? (
+          {(tab === 'sales' ? saleGroups.length === 0 : grouped.length === 0) ? (
             <View style={styles.empty}>
               <Text style={styles.emptyEmoji}>
                 {tab === 'harvest' ? '🫐' : tab === 'sales' ? '💰' : '📋'}
@@ -217,15 +250,70 @@ export default function InputScreen() {
               </Text>
               <Text style={styles.emptySubText}>아래 + 버튼으로 추가하세요</Text>
             </View>
+          ) : tab === 'sales' ? (
+            /* ── 판매: 묶음 단위 카드 ── */
+            saleGroups.map((sg, gi) => {
+              const netRev = sg.totalRevenue - sg.totalCommission - sg.totalExtra;
+              return (
+                <TouchableOpacity key={gi} onPress={() => openGroupEdit(sg.records)} activeOpacity={0.75}>
+                  <Card style={styles.groupCard}>
+                    {/* 헤더 */}
+                    <View style={styles.groupHeader}>
+                      {sg.farmName && (
+                        <View style={styles.farmBadge}>
+                          <Text style={styles.farmBadgeText}>{sg.farmName}</Text>
+                        </View>
+                      )}
+                      {sg.saleType && (
+                        <View style={styles.saleTypeBadge}>
+                          <Text style={styles.saleTypeBadgeText}>{sg.saleType}</Text>
+                        </View>
+                      )}
+                      <Text style={styles.groupCrop}>{sg.cropType || '(작물 미입력)'}</Text>
+                      {sg.buyer && <Text style={styles.buyerText}>{sg.buyer}</Text>}
+                      <Text style={styles.editHint}>수정 ›</Text>
+                    </View>
+
+                    <View style={styles.divider} />
+
+                    {/* 개별 항목 */}
+                    {sg.records.map((r) => (
+                      <View key={r.id} style={styles.saleItemRow}>
+                        <Text style={styles.saleItemLabel} numberOfLines={1}>
+                          {[r.variety, r.size].filter(Boolean).join(' · ') || '—'}
+                        </Text>
+                        <Text style={styles.saleItemQty}>{r.quantity}kg</Text>
+                        {r.pricePerUnit != null && (
+                          <Text style={styles.saleItemPrice}>@{r.pricePerUnit.toLocaleString()}</Text>
+                        )}
+                        <Text style={styles.saleItemRev}>{(r.totalRevenue ?? 0).toLocaleString()}원</Text>
+                      </View>
+                    ))}
+
+                    <View style={styles.saleTotalRow}>
+                      <Text style={styles.saleTotalLabel}>
+                        합계 {sg.totalQty}kg
+                      </Text>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={styles.saleTotalRev}>{sg.totalRevenue.toLocaleString()}원</Text>
+                        {(sg.totalCommission > 0 || sg.totalExtra > 0) && (
+                          <Text style={styles.saleNetRev}>순 {netRev.toLocaleString()}원</Text>
+                        )}
+                      </View>
+                    </View>
+                  </Card>
+                </TouchableOpacity>
+              );
+            })
           ) : (
+            /* ── 수확/기타: 농장+작물 그룹 카드 ── */
             grouped.map((group, gi) => (
               <TouchableOpacity
                 key={`${group.farmId}-${group.cropType}-${group.otherSubType ?? ''}-${gi}`}
-                onPress={() => openGroupEdit(group)}
+                onPress={() => openGroupEdit(group.allRecords)}
                 activeOpacity={0.75}
               >
                 <Card style={styles.groupCard}>
-                  {/* 카드 헤더 */}
                   <View style={styles.groupHeader}>
                     {group.farmName && (
                       <View style={styles.farmBadge}>
@@ -245,28 +333,16 @@ export default function InputScreen() {
 
                   <View style={styles.divider} />
 
-                  {/* 품종 그룹 */}
                   {group.varieties.map((vg, vi) => (
                     <View key={`${vg.variety}-${vi}`}
                       style={[styles.varietyBlock, vi > 0 && styles.varietyBlockSep]}>
-                      {vg.variety !== '' && (
-                        <Text style={styles.varietyLabel}>{vg.variety}</Text>
-                      )}
+                      {vg.variety !== '' && <Text style={styles.varietyLabel}>{vg.variety}</Text>}
                       {vg.sizes.map((sr) => (
                         <View key={sr.size} style={styles.sizeRow}>
                           <Text style={styles.sizeLabel}>{sr.size || '—'}</Text>
-                          <View style={styles.sizeRight}>
-                            {tab === 'sales' && (sr.revenue ?? 0) > 0 && (
-                              <Text style={styles.sizeRevenue}>
-                                {sr.revenue!.toLocaleString()}원
-                              </Text>
-                            )}
-                            <Text style={styles.sizeQty}>
-                              {Number.isInteger(sr.quantity)
-                                ? sr.quantity
-                                : parseFloat(sr.quantity.toFixed(2))}{sr.unit}
-                            </Text>
-                          </View>
+                          <Text style={styles.sizeQty}>
+                            {Number.isInteger(sr.quantity) ? sr.quantity : parseFloat(sr.quantity.toFixed(2))}{sr.unit}
+                          </Text>
                         </View>
                       ))}
                     </View>
@@ -378,6 +454,30 @@ const styles = StyleSheet.create({
   sizeLabel: { fontSize: 15, color: Colors.text, flex: 1, marginLeft: 6, fontWeight: '500' },
   sizeRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sizeRevenue: { fontSize: 13, color: Colors.success, fontWeight: '600' },
+  // 판매 카드
+  saleTypeBadge: {
+    backgroundColor: Colors.success + '22', borderRadius: Radius.full,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  saleTypeBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.success },
+  buyerText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
+  saleItemRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 7, paddingHorizontal: Spacing.md,
+    borderBottomWidth: 1, borderBottomColor: Colors.background,
+  },
+  saleItemLabel: { flex: 1, fontSize: 13, color: Colors.text, fontWeight: '500' },
+  saleItemQty: { fontSize: 13, color: Colors.textSub, marginRight: 6, minWidth: 36, textAlign: 'right' },
+  saleItemPrice: { fontSize: 12, color: Colors.textLight, marginRight: 8 },
+  saleItemRev: { fontSize: 13, fontWeight: '700', color: Colors.primaryDark, minWidth: 70, textAlign: 'right' },
+  saleTotalRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    backgroundColor: Colors.primaryUltraLight, borderTopWidth: 1, borderTopColor: Colors.primaryLight,
+  },
+  saleTotalLabel: { fontSize: 13, fontWeight: '700', color: Colors.primaryDark },
+  saleTotalRev: { fontSize: 14, fontWeight: '800', color: Colors.success },
+  saleNetRev: { fontSize: 11, color: Colors.textSub, marginTop: 1 },
   sizeQty: { fontSize: 17, fontWeight: '800', color: Colors.primaryDark, minWidth: 60, textAlign: 'right' },
   // FAB
   fab: {

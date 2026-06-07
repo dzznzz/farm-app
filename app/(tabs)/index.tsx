@@ -91,7 +91,8 @@ export default function HomeScreen() {
 
   const now = new Date();
   const h = now.getHours();
-  const greeting = (h >= 5 && h < 10) ? '좋은 아침이에요🙌'
+  const greeting = 
+      (h >= 5  && h < 10) ? '좋은 아침이에요🙌'
     : (h >= 10 && h < 17) ? '오늘도 화이팅👍'
     : '수고하셨어요 👋';
 

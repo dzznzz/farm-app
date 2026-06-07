@@ -22,6 +22,7 @@ export interface DisplayRecord {
   commissionAmount?: number | null;
   extraCost?: number | null;
   buyer?: string | null;
+  saleType?: string | null;
   otherSubType?: string | null;
   recipient?: string | null;
 }
@@ -89,6 +90,8 @@ export function RecordDetailModal({ visible, record, onClose, onDeleted, onEdit 
               {record.variety && <Row label="품종" value={record.variety} />}
               {record.size && <Row label="사이즈" value={record.size} />}
               <Row label="수량" value={`${record.quantity} ${record.unit ?? 'kg'}`} />
+              {record.type === 'sales' && record.saleType &&
+                <Row label="판매 유형" value={record.saleType} />}
               {record.type === 'sales' && record.pricePerUnit != null &&
                 <Row label="단가" value={`${record.pricePerUnit.toLocaleString()}원`} />}
               {record.type === 'sales' && record.totalRevenue != null &&
