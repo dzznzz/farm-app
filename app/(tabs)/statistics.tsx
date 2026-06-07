@@ -11,7 +11,6 @@ import {
   fetchPeriodSummaryForRange, fetchStatsForRange,
   fetchPriceHistory, fetchBreakdown, PeriodSummary, PricePoint,
 } from '../../hooks/useStats';
-import { BreakdownItem } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
@@ -352,8 +351,9 @@ export default function StatisticsScreen() {
             <Text style={styles.dateNavHint}>탭하여 날짜 선택</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.dateNavArrowBtn}
+            disabled={range.to >= today}
             onPress={() => setSelectedDate(navigatePeriod(selectedDate, period, 1))}>
-            <Text style={styles.dateNavArrow}>›</Text>
+            <Text style={[styles.dateNavArrow, range.to >= today && { color: Colors.border }]}>›</Text>
           </TouchableOpacity>
         </View>
 
@@ -585,7 +585,7 @@ export default function StatisticsScreen() {
       {user && showExport && (
         <ExportModal visible={showExport} onClose={() => setShowExport(false)} userId={user.id} />
       )}
-      <CalendarModal visible={showDatePicker} value={selectedDate}
+      <CalendarModal visible={showDatePicker} value={selectedDate} maxDate={today}
         onSelect={(d) => { setSelectedDate(d); setShowDatePicker(false); }}
         onClose={() => setShowDatePicker(false)} />
     </SafeAreaView>

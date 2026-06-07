@@ -7,9 +7,10 @@ interface Props {
   value: string;
   onSelect: (d: string) => void;
   onClose: () => void;
+  maxDate?: string; // 이 날짜 이후 선택 불가
 }
 
-export function CalendarModal({ visible, value, onSelect, onClose }: Props) {
+export function CalendarModal({ visible, value, onSelect, onClose, maxDate }: Props) {
   const parsed = value.split('-');
   const [viewYear, setViewYear] = useState(parseInt(parsed[0]));
   const [viewMonth, setViewMonth] = useState(parseInt(parsed[1]) - 1);
@@ -17,16 +18,22 @@ export function CalendarModal({ visible, value, onSelect, onClose }: Props) {
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const firstDay = new Date(viewYear, viewMonth, 1).getDay();
   const todayStr = new Date().toISOString().split('T')[0];
+  const limitStr = maxDate ?? todayStr; // maxDate 없으면 오늘이 한계
 
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let i = 1; i <= daysInMonth; i++) cells.push(i);
+
+  const viewYM = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+  const limitYM = limitStr.slice(0, 7);
+  const isNextMonthDisabled = viewYM >= limitYM;
 
   const prevMonth = () => {
     if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
     else setViewMonth((m) => m - 1);
   };
   const nextMonth = () => {
+    if (isNextMonthDisabled) return;
     if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
     else setViewMonth((m) => m + 1);
   };
@@ -40,8 +47,8 @@ export function CalendarModal({ visible, value, onSelect, onClose }: Props) {
               <Text style={styles.navText}>‹</Text>
             </TouchableOpacity>
             <Text style={styles.monthTitle}>{viewYear}년 {viewMonth + 1}월</Text>
-            <TouchableOpacity onPress={nextMonth} style={styles.navBtn}>
-              <Text style={styles.navText}>›</Text>
+            <TouchableOpacity onPress={nextMonth} style={styles.navBtn} disabled={isNextMonthDisabled}>
+              <Text style={[styles.navText, isNextMonthDisabled && { color: Colors.border }]}>›</Text>
             </TouchableOpacity>
           </View>
 
@@ -59,20 +66,23 @@ export function CalendarModal({ visible, value, onSelect, onClose }: Props) {
               const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const isSelected = dateStr === value;
               const isToday = dateStr === todayStr;
+              const isFuture = dateStr > limitStr;
               const isSun = i % 7 === 0;
               const isSat = i % 7 === 6;
               return (
                 <TouchableOpacity
                   key={dateStr}
                   style={[styles.cell, isSelected && styles.cellSelected, isToday && !isSelected && styles.cellToday]}
-                  onPress={() => { onSelect(dateStr); onClose(); }}
+                  onPress={() => { if (!isFuture) { onSelect(dateStr); onClose(); } }}
+                  disabled={isFuture}
                 >
                   <Text style={[
                     styles.dayText,
+                    isFuture && styles.dayFutureText,
                     isSelected && styles.daySelectedText,
-                    !isSelected && isToday && { color: Colors.primary },
-                    !isSelected && isSun && { color: Colors.danger },
-                    !isSelected && isSat && { color: Colors.primary },
+                    !isSelected && !isFuture && isToday && { color: Colors.primary },
+                    !isSelected && !isFuture && isSun && { color: Colors.danger },
+                    !isSelected && !isFuture && isSat && { color: Colors.primary },
                   ]}>
                     {day}
                   </Text>
@@ -110,6 +120,7 @@ const styles = StyleSheet.create({
   cellSelected: { backgroundColor: Colors.primary, borderRadius: Radius.full },
   cellToday: { borderWidth: 1, borderColor: Colors.primary, borderRadius: Radius.full },
   dayText: { fontSize: 14, color: Colors.text },
+  dayFutureText: { color: Colors.border },
   daySelectedText: { color: '#fff', fontWeight: '700' },
   closeBtn: {
     marginTop: Spacing.md, backgroundColor: Colors.primaryUltraLight,
