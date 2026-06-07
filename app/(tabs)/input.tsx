@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Platform,
+  ActivityIndicator, Platform, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,6 +33,55 @@ function formatDisplayDate(dateStr: string) {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
 }
 
+// ── Grouping types & logic ──
+type SizeRow = { size: string; quantity: number; unit: string; revenue?: number; ids: string[] };
+type VarietyGroup = { variety: string; sizes: SizeRow[] };
+type FarmCropGroup = {
+  farmId: string | null;
+  farmName: string | null;
+  cropType: string;
+  otherSubType?: string;
+  varieties: VarietyGroup[];
+  allRecords: DisplayRecord[];
+};
+
+function groupByFarmCrop(records: DisplayRecord[], recordType: TabType): FarmCropGroup[] {
+  const groups: FarmCropGroup[] = [];
+  for (const r of records) {
+    const subType = recordType === 'other' ? (r.otherSubType ?? '') : '';
+    const gKey = `${r.farmId ?? ''}::${r.cropType ?? ''}::${subType}`;
+    let group = groups.find(g =>
+      `${g.farmId ?? ''}::${g.cropType}::${g.otherSubType ?? ''}` === gKey
+    );
+    if (!group) {
+      group = {
+        farmId: r.farmId ?? null,
+        farmName: r.farmName ?? null,
+        cropType: r.cropType ?? '',
+        otherSubType: subType || undefined,
+        varieties: [],
+        allRecords: [],
+      };
+      groups.push(group);
+    }
+    group.allRecords.push(r);
+    const variety = r.variety ?? '';
+    let vg = group.varieties.find(v => v.variety === variety);
+    if (!vg) { vg = { variety, sizes: [] }; group.varieties.push(vg); }
+    const size = r.size ?? '';
+    let sr = vg.sizes.find(s => s.size === size);
+    if (!sr) {
+      sr = { size, quantity: 0, unit: r.unit ?? 'kg', ids: [] };
+      if (r.type === 'sales') sr.revenue = 0;
+      vg.sizes.push(sr);
+    }
+    sr.quantity += r.quantity;
+    if (r.type === 'sales' && r.totalRevenue) sr.revenue = (sr.revenue ?? 0) + r.totalRevenue;
+    sr.ids.push(r.id);
+  }
+  return groups;
+}
+
 export default function InputScreen() {
   const { user } = useAuth();
   const today = new Date().toISOString().split('T')[0];
@@ -44,6 +93,8 @@ export default function InputScreen() {
   const [showForm, setShowForm] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<DisplayRecord | null>(null);
   const [editRecord, setEditRecord] = useState<DisplayRecord | undefined>(undefined);
+  const [groupListRecords, setGroupListRecords] = useState<DisplayRecord[]>([]);
+  const [showGroupList, setShowGroupList] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -97,7 +148,7 @@ export default function InputScreen() {
 
     setRecords(combined);
     setLoading(false);
-  }, [user]);
+  }, [user, farms]);
 
   useFocusEffect(useCallback(() => { loadRecords(date); }, [date, loadRecords]));
 
@@ -108,21 +159,28 @@ export default function InputScreen() {
   };
 
   const filtered = records.filter((r) => r.type === tab);
+  const grouped = groupByFarmCrop(filtered, tab);
 
-  const getTypeLabel = (r: DisplayRecord) => {
-    if (r.type === 'harvest') return { text: '수확', color: Colors.primary, bg: Colors.primaryUltraLight };
-    if (r.type === 'sales') return { text: '판매', color: Colors.success, bg: '#E8F5E9' };
-    if (r.otherSubType === 'gift') return { text: '나눔', color: Colors.warning, bg: '#FFF8E1' };
-    return { text: '폐기', color: Colors.danger, bg: Colors.dangerLight };
+  const handleSizeRowTap = (recs: DisplayRecord[]) => {
+    if (recs.length === 1) {
+      setSelectedRecord(recs[0]);
+    } else {
+      setGroupListRecords(recs);
+      setShowGroupList(true);
+    }
   };
+
+  const otherTypeLabel = (subType?: string) =>
+    subType === 'gift' ? '나눔' : subType === 'waste' ? '폐기' : '';
+
+  const otherTypeColor = (subType?: string) =>
+    subType === 'gift' ? Colors.warning : Colors.danger;
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 헤더 */}
       <LinearGradient colors={[Colors.primaryUltraLight, Colors.background]} style={styles.headerGradient}>
         <Text style={styles.title}>데이터 입력</Text>
 
-        {/* 날짜 네비게이션 */}
         <View style={styles.dateNav}>
           <TouchableOpacity style={styles.navBtn} onPress={() => handleDateChange(-1)}>
             <Text style={styles.navArrow}>‹</Text>
@@ -136,14 +194,11 @@ export default function InputScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 탭 */}
         <View style={styles.tabContainer}>
           {TABS.map((t) => (
-            <TouchableOpacity
-              key={t.key}
+            <TouchableOpacity key={t.key}
               style={[styles.tabBtn, tab === t.key && styles.tabActive]}
-              onPress={() => setTab(t.key)}
-            >
+              onPress={() => setTab(t.key)}>
               <Text style={[styles.tabText, tab === t.key && { color: t.color, fontWeight: '700' }]}>
                 {t.label}
               </Text>
@@ -152,12 +207,11 @@ export default function InputScreen() {
         </View>
       </LinearGradient>
 
-      {/* 목록 */}
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView style={styles.scroll} contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}>
-          {filtered.length === 0 ? (
+          {grouped.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyEmoji}>
                 {tab === 'harvest' ? '🫐' : tab === 'sales' ? '💰' : '📋'}
@@ -168,42 +222,69 @@ export default function InputScreen() {
               <Text style={styles.emptySubText}>아래 + 버튼으로 추가하세요</Text>
             </View>
           ) : (
-            filtered.map((r) => {
-              const lbl = getTypeLabel(r);
-              return (
-                <TouchableOpacity key={r.id} onPress={() => setSelectedRecord(r)} activeOpacity={0.75}>
-                  <Card style={styles.recordCard}>
-                    <View style={styles.recordRow}>
-                      <View style={[styles.typeBadge, { backgroundColor: lbl.bg }]}>
-                        <Text style={[styles.typeBadgeText, { color: lbl.color }]}>{lbl.text}</Text>
-                      </View>
-                      <View style={styles.recordInfo}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          {(() => {
-                            const fn = r.farmName ?? farms.find(f => f.id === r.farmId)?.name;
-                            return fn ? (
-                              <View style={styles.farmBadge}>
-                                <Text style={styles.farmBadgeText}>{fn}</Text>
-                              </View>
-                            ) : null;
-                          })()}
-                          <Text style={styles.recordMain} numberOfLines={1}>
-                            {[r.cropType, r.variety, r.size].filter(Boolean).join(' · ')}
-                          </Text>
-                        </View>
-                        <Text style={styles.recordSub}>
-                          {r.quantity} {r.unit ?? 'kg'}
-                          {r.type === 'sales' && r.totalRevenue
-                            ? ` · ${r.totalRevenue.toLocaleString()}원`
-                            : ''}
-                        </Text>
-                      </View>
-                      <Text style={styles.chevron}>›</Text>
+            grouped.map((group, gi) => (
+              <Card key={`${group.farmId}-${group.cropType}-${group.otherSubType ?? ''}-${gi}`}
+                style={styles.groupCard}>
+                {/* 카드 헤더 */}
+                <View style={styles.groupHeader}>
+                  {group.farmName && (
+                    <View style={styles.farmBadge}>
+                      <Text style={styles.farmBadgeText}>{group.farmName}</Text>
                     </View>
-                  </Card>
-                </TouchableOpacity>
-              );
-            })
+                  )}
+                  {tab === 'other' && group.otherSubType && (
+                    <View style={[styles.typeBadge, { backgroundColor: otherTypeColor(group.otherSubType) + '22' }]}>
+                      <Text style={[styles.typeBadgeText, { color: otherTypeColor(group.otherSubType) }]}>
+                        {otherTypeLabel(group.otherSubType)}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={styles.groupCrop}>{group.cropType || '(작물 미입력)'}</Text>
+                </View>
+
+                <View style={styles.divider} />
+
+                {/* 품종 그룹 */}
+                {group.varieties.map((vg, vi) => (
+                  <View key={`${vg.variety}-${vi}`}
+                    style={[styles.varietyBlock, vi > 0 && styles.varietyBlockSep]}>
+                    {vg.variety !== '' && (
+                      <Text style={styles.varietyLabel}>{vg.variety}</Text>
+                    )}
+                    {vg.sizes.map((sr) => {
+                      const matchingRecords = group.allRecords.filter(
+                        r => (r.variety ?? '') === vg.variety && (r.size ?? '') === sr.size
+                      );
+                      return (
+                        <TouchableOpacity
+                          key={sr.size}
+                          style={styles.sizeRow}
+                          onPress={() => handleSizeRowTap(matchingRecords)}
+                          activeOpacity={0.5}
+                        >
+                          <Text style={styles.sizeLabel}>{sr.size || '—'}</Text>
+                          <View style={styles.sizeRight}>
+                            {tab === 'sales' && (sr.revenue ?? 0) > 0 && (
+                              <Text style={styles.sizeRevenue}>
+                                {sr.revenue!.toLocaleString()}원
+                              </Text>
+                            )}
+                            <Text style={styles.sizeQty}>
+                              {Number.isInteger(sr.quantity)
+                                ? sr.quantity
+                                : parseFloat(sr.quantity.toFixed(2))}{sr.unit}
+                            </Text>
+                            {matchingRecords.length > 1 && (
+                              <Text style={styles.mergeTag}>{matchingRecords.length}건</Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
+              </Card>
+            ))
           )}
         </ScrollView>
       )}
@@ -213,7 +294,6 @@ export default function InputScreen() {
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
 
-      {/* 입력 폼 모달 */}
       <InputFormModal
         visible={showForm}
         tab={editRecord?.type ?? tab}
@@ -224,7 +304,6 @@ export default function InputScreen() {
         onSaved={() => { loadRecords(date); }}
       />
 
-      {/* 레코드 상세/수정/삭제 모달 */}
       <RecordDetailModal
         visible={selectedRecord !== null}
         record={selectedRecord}
@@ -236,6 +315,39 @@ export default function InputScreen() {
           setShowForm(true);
         }}
       />
+
+      {/* 복수 기록 선택 바텀시트 */}
+      <Modal
+        visible={showGroupList}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGroupList(false)}
+      >
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1}
+          onPress={() => setShowGroupList(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.sheetBox}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>기록 선택</Text>
+            <Text style={styles.sheetSub}>합산된 {groupListRecords.length}건의 기록</Text>
+            {groupListRecords.map((r, i) => (
+              <TouchableOpacity
+                key={r.id}
+                style={[styles.sheetItem, i < groupListRecords.length - 1 && styles.sheetItemBorder]}
+                onPress={() => { setShowGroupList(false); setSelectedRecord(r); }}
+              >
+                <Text style={styles.sheetItemMain}>
+                  {[r.variety, r.size].filter(Boolean).join(' · ') || '(품종/사이즈 미입력)'}
+                </Text>
+                <Text style={styles.sheetItemSub}>
+                  {r.quantity}{r.unit ?? 'kg'}
+                  {r.type === 'sales' && r.totalRevenue
+                    ? ` · ${r.totalRevenue.toLocaleString()}원` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -269,28 +381,66 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
   emptyText: { ...Typography.body, color: Colors.textSub, textAlign: 'center' },
   emptySubText: { ...Typography.caption, marginTop: 6, color: Colors.textLight },
-  recordCard: { marginBottom: Spacing.sm, padding: 0, overflow: 'hidden' },
-  recordRow: { flexDirection: 'row', alignItems: 'center', padding: Spacing.md, gap: Spacing.sm },
+  // Group card
+  groupCard: { marginBottom: Spacing.md, padding: 0, overflow: 'hidden' },
+  groupHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: Spacing.md, paddingBottom: Spacing.sm,
+  },
   farmBadge: {
     backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.full,
-    paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: Colors.primaryLight,
+    paddingHorizontal: 9, paddingVertical: 3,
+    borderWidth: 1, borderColor: Colors.primaryLight,
   },
-  farmBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.primaryDark },
+  farmBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.primaryDark },
   typeBadge: {
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full,
-    alignSelf: 'flex-start',
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full,
   },
-  typeBadgeText: { fontSize: 12, fontWeight: '700' },
-  recordInfo: { flex: 1 },
-  recordMain: { ...Typography.bodyBold, marginBottom: 2 },
-  recordSub: { ...Typography.caption, color: Colors.textSub },
-  chevron: { fontSize: 20, color: Colors.textLight, fontWeight: '300' },
+  typeBadgeText: { fontSize: 11, fontWeight: '700' },
+  groupCrop: { fontSize: 16, fontWeight: '800', color: Colors.text },
+  divider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.md },
+  varietyBlock: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: 4 },
+  varietyBlockSep: { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 2 },
+  varietyLabel: {
+    fontSize: 12, fontWeight: '700', color: Colors.textSub,
+    marginBottom: 2, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  sizeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: Colors.background,
+  },
+  sizeLabel: { fontSize: 15, color: Colors.text, flex: 1, marginLeft: 6, fontWeight: '500' },
+  sizeRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sizeRevenue: { fontSize: 13, color: Colors.success, fontWeight: '600' },
+  sizeQty: { fontSize: 17, fontWeight: '800', color: Colors.primaryDark, minWidth: 60, textAlign: 'right' },
+  mergeTag: {
+    fontSize: 10, fontWeight: '700', color: Colors.textLight,
+    backgroundColor: Colors.border, borderRadius: Radius.full,
+    paddingHorizontal: 5, paddingVertical: 1,
+  },
+  // Bottom sheet
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheetBox: {
+    backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: Spacing.lg, paddingBottom: 40,
+  },
+  sheetHandle: {
+    width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2,
+    alignSelf: 'center', marginBottom: Spacing.md,
+  },
+  sheetTitle: { ...Typography.h3, marginBottom: 2 },
+  sheetSub: { ...Typography.caption, color: Colors.textSub, marginBottom: Spacing.md },
+  sheetItem: { paddingVertical: 14 },
+  sheetItemBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  sheetItemMain: { ...Typography.bodyBold },
+  sheetItemSub: { ...Typography.caption, color: Colors.textSub, marginTop: 3 },
+  // FAB
   fab: {
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 36 : 24,
     right: 24,
-    width: 60, height: 60,
-    borderRadius: 30,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: Colors.primary,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },

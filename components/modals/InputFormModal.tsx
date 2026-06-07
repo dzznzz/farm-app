@@ -12,7 +12,7 @@ type TabType = 'harvest' | 'sales' | 'other';
 type OtherType = 'gift' | 'waste';
 
 interface Farm { id: string; name: string; crop_type: string; is_primary?: boolean }
-interface Entry { variety: string; size: string; quantity: string; unit: string }
+interface Entry { variety: string; size: string; quantity: string; unit: string; price?: string }
 interface WorkerEntry { name: string; hours: string; cost: string }
 interface SizeInfo { name: string; range: string }
 
@@ -31,7 +31,7 @@ const DEFAULT_UNITS = ['kg', '박스'];
 
 function getStepIds(tab: TabType): string[] {
   if (tab === 'harvest') return ['date', 'farm', 'crop', 'entries'];
-  if (tab === 'sales')   return ['date', 'farm', 'crop', 'entries', 'price'];
+  if (tab === 'sales')   return ['date', 'farm', 'crop', 'entries'];
   return                        ['date', 'farm', 'otherType', 'crop', 'entries'];
 }
 
@@ -39,38 +39,167 @@ function getStepLabel(id: string, tab: TabType): string {
   const map: Record<string, string> = {
     date: '날짜', farm: '농장', crop: '작물', otherType: '구분',
     entries: tab === 'harvest' ? '수확 내역' : tab === 'sales' ? '판매 내역' : '수량 내역',
-    price: '단가 (원)',
   };
   return map[id] ?? id;
 }
 
+// ── SizeEntryModal (사이즈 탭 → 수량/단가 입력 바텀시트) ──
+interface SizeEntryModalProps {
+  visible: boolean;
+  variety: string;
+  initialSize: string;
+  unitOptions: string[];
+  isSales: boolean;
+  onAdd: (entry: Entry) => void;
+  onClose: () => void;
+}
+
+function SizeEntryModal({ visible, variety, initialSize, unitOptions, isSales, onAdd, onClose }: SizeEntryModalProps) {
+  const [size, setSize] = useState(initialSize);
+  const [qty, setQty] = useState('');
+  const [unit, setUnit] = useState(unitOptions[0] ?? 'kg');
+  const [price, setPrice] = useState('');
+  const [error, setError] = useState('');
+  const isCustom = initialSize === '';
+
+  useEffect(() => {
+    if (visible) {
+      setSize(initialSize);
+      setQty('');
+      setUnit(unitOptions[0] ?? 'kg');
+      setPrice('');
+      setError('');
+    }
+  }, [visible, initialSize]);
+
+  const handleAdd = () => {
+    if (!size.trim()) { setError('사이즈를 입력해주세요.'); return; }
+    if (!qty.trim() || isNaN(parseFloat(qty))) { setError('수량을 입력해주세요.'); return; }
+    if (isSales && (!price.trim() || isNaN(parseFloat(price)))) { setError('단가를 입력해주세요.'); return; }
+    onAdd({ variety, size: size.trim(), quantity: qty.trim(), unit, price: isSales ? price : undefined });
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={seStyles.overlay} activeOpacity={1} onPress={onClose}>
+          <TouchableOpacity activeOpacity={1} style={seStyles.sheet}>
+            <View style={seStyles.handle} />
+            <Text style={seStyles.header}>{variety}</Text>
+
+            {isCustom ? (
+              <>
+                <Text style={seStyles.label}>사이즈</Text>
+                <TextInput style={seStyles.input} value={size} onChangeText={setSize}
+                  placeholder="예) 왕왕특, 점보" placeholderTextColor={Colors.textLight} autoFocus />
+              </>
+            ) : (
+              <View style={seStyles.sizeTag}>
+                <Text style={seStyles.sizeTagText}>{initialSize}</Text>
+              </View>
+            )}
+
+            <Text style={seStyles.label}>수량</Text>
+            <View style={seStyles.row}>
+              <TextInput style={[seStyles.input, { flex: 1 }]} value={qty} onChangeText={setQty}
+                placeholder="0" placeholderTextColor={Colors.textLight}
+                keyboardType="decimal-pad" autoFocus={!isCustom} />
+              <View style={seStyles.unitRow}>
+                {unitOptions.map((u) => (
+                  <TouchableOpacity key={u}
+                    style={[seStyles.unitChip, unit === u && seStyles.unitChipActive]}
+                    onPress={() => setUnit(u)}>
+                    <Text style={[seStyles.unitText, unit === u && seStyles.unitTextActive]}>{u}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {isSales && (
+              <>
+                <Text style={seStyles.label}>단가 (원)</Text>
+                <TextInput style={seStyles.input} value={price} onChangeText={setPrice}
+                  placeholder="0" placeholderTextColor={Colors.textLight}
+                  keyboardType="decimal-pad" />
+              </>
+            )}
+
+            {!!error && <Text style={seStyles.error}>{error}</Text>}
+
+            <TouchableOpacity style={seStyles.addBtn} onPress={handleAdd}>
+              <Text style={seStyles.addBtnText}>추가</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const seStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: Spacing.lg, paddingBottom: 40,
+  },
+  handle: {
+    width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2,
+    alignSelf: 'center', marginBottom: Spacing.md,
+  },
+  header: { ...Typography.h3, marginBottom: Spacing.md },
+  sizeTag: {
+    alignSelf: 'flex-start', backgroundColor: Colors.primaryUltraLight,
+    borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 6,
+    borderWidth: 1, borderColor: Colors.primaryLight, marginBottom: Spacing.md,
+  },
+  sizeTagText: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },
+  label: { ...Typography.label, marginBottom: 4, marginTop: Spacing.sm },
+  input: {
+    backgroundColor: Colors.background, borderRadius: Radius.md,
+    padding: 13, fontSize: 16, color: Colors.text,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  row: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
+  unitRow: { flexDirection: 'row', gap: 6 },
+  unitChip: {
+    paddingHorizontal: 14, paddingVertical: 13, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.background,
+  },
+  unitChipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
+  unitText: { fontSize: 14, color: Colors.textSub, fontWeight: '600' },
+  unitTextActive: { color: Colors.primaryDark, fontWeight: '700' },
+  error: { fontSize: 12, color: Colors.danger, marginTop: 8, fontWeight: '600' },
+  addBtn: {
+    backgroundColor: Colors.primary, borderRadius: Radius.md,
+    paddingVertical: 15, alignItems: 'center', marginTop: Spacing.md,
+  },
+  addBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+});
+
+// ── Main InputFormModal ──
 export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, editRecord }: Props) {
   const isEdit = !!editRecord;
   const today = new Date().toISOString().split('T')[0];
   const scrollRef = useRef<ScrollView>(null);
 
-  // Step navigation (create mode only)
   const steps = getStepIds(tab);
-  const [activeStep, setActiveStep] = useState(0); // 0 = first step active
+  const [activeStep, setActiveStep] = useState(0);
 
-  // Base fields
   const [date, setDate] = useState(today);
   const primaryFarm = farms.find(f => f.is_primary) ?? farms[0];
   const [farmId, setFarmId] = useState(primaryFarm?.id ?? '');
   const [cropType, setCropType] = useState(primaryFarm?.crop_type ?? '블루베리');
   const [otherType, setOtherType] = useState<OtherType>('gift');
 
-  // Multi-entry (create mode)
   const [entries, setEntries] = useState<Entry[]>([]);
   const [newVariety, setNewVariety] = useState('');
-  const [newSize, setNewSize] = useState('');
-  const [customSizeMode, setCustomSizeMode] = useState(false);
-  const [newQty, setNewQty] = useState('');
-  const [newUnit, setNewUnit] = useState('kg');
-  const [entryError, setEntryError] = useState('');
   const [showSizeInfo, setShowSizeInfo] = useState(false);
+  const [sizeModalVisible, setSizeModalVisible] = useState(false);
+  const [sizeModalTarget, setSizeModalTarget] = useState('');
+  const [entryError, setEntryError] = useState('');
 
-  // Edit mode single-entry fields
+  // Edit mode
   const [editVariety, setEditVariety] = useState('');
   const [editSize, setEditSize] = useState('');
   const [editCustomSizeMode, setEditCustomSizeMode] = useState(false);
@@ -78,14 +207,14 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   const [editQty, setEditQty] = useState('');
   const [editUnit, setEditUnit] = useState('kg');
 
-  // Workers (harvest only)
+  // Workers
   const [workers, setWorkers] = useState<WorkerEntry[]>([]);
   const [wName, setWName] = useState('');
   const [wHours, setWHours] = useState('');
   const [wCost, setWCost] = useState('');
   const [workerError, setWorkerError] = useState('');
 
-  // Sales
+  // Sales (edit mode / optional fields)
   const [pricePerUnit, setPricePerUnit] = useState('');
   const [commissionRate, setCommissionRate] = useState('');
   const [commissionType, setCommissionType] = useState<'%' | '원'>('%');
@@ -104,14 +233,15 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   const [unitOptions, setUnitOptions] = useState<string[]>(DEFAULT_UNITS);
   const [showCalendar, setShowCalendar] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingHarvest, setLoadingHarvest] = useState(false);
 
   const reset = () => {
     setActiveStep(0);
     const pFarm = farms.find(f => f.is_primary) ?? farms[0];
     setDate(today); setFarmId(pFarm?.id ?? ''); setCropType(pFarm?.crop_type ?? '블루베리');
     setOtherType('gift'); setEntries([]);
-    setNewVariety(''); setNewSize(''); setCustomSizeMode(false); setNewQty(''); setNewUnit('kg');
-    setEntryError(''); setShowSizeInfo(false);
+    setNewVariety(''); setShowSizeInfo(false);
+    setSizeModalVisible(false); setSizeModalTarget(''); setEntryError('');
     setEditVariety(''); setEditSize(''); setEditCustomSizeMode(false);
     setEditShowSizeInfo(false); setEditQty(''); setEditUnit('kg');
     setWorkers([]); setWName(''); setWHours(''); setWCost(''); setWorkerError('');
@@ -139,7 +269,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     }
   }, [visible, editRecord]);
 
-  // 모달 열릴 때 / farms 로드될 때 대표 농장 기본 선택 (등록·수정 공통)
   useEffect(() => {
     if (visible && !farmId && farms.length > 0) {
       const pFarm = farms.find(f => f.is_primary) ?? farms[0];
@@ -164,10 +293,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         const opts = data?.length ? data.map((s: any) => s.name) : BLUEBERRY_SIZES;
         setSizeOptions(opts);
         setSizeInfoData(data?.length ? data.map((s: any) => ({ name: s.name, range: s.range_info ?? '' })) : []);
-        // edit 모드: 기존 사이즈가 목록에 없으면 직접입력 모드
-        if (isEdit && editRecord?.size && !opts.includes(editRecord.size)) {
-          setEditCustomSizeMode(true);
-        }
+        if (isEdit && editRecord?.size && !opts.includes(editRecord.size)) setEditCustomSizeMode(true);
       });
   }, [cropType]);
 
@@ -176,7 +302,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     if (id === 'date' || id === 'otherType' || id === 'farm') return true;
     if (id === 'crop') return !!cropType.trim();
     if (id === 'entries') return entries.length > 0;
-    if (id === 'price') return !!pricePerUnit.trim() && !isNaN(parseFloat(pricePerUnit));
     return true;
   };
 
@@ -186,15 +311,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   };
 
   // ── Entry helpers ──
-  const addEntry = () => {
-    if (!newVariety.trim()) { setEntryError('품종을 입력해주세요.'); return; }
-    if (!newSize.trim()) { setEntryError('사이즈를 선택하거나 입력해주세요.'); return; }
-    if (!newQty.trim() || isNaN(parseFloat(newQty))) { setEntryError('수량을 올바르게 입력해주세요.'); return; }
-    setEntryError('');
-    setEntries((prev) => [...prev, { variety: newVariety.trim(), size: newSize.trim(), quantity: newQty.trim(), unit: newUnit }]);
-    setNewSize(''); setCustomSizeMode(false); setNewQty('');
-  };
-
   const removeEntry = (i: number) => setEntries((prev) => prev.filter((_, idx) => idx !== i));
 
   // ── Worker helpers ──
@@ -208,26 +324,68 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
 
   const removeWorker = (i: number) => setWorkers((prev) => prev.filter((_, idx) => idx !== i));
 
+  // ── 수확데이터 가져오기 (sales only) ──
+  const loadFromHarvest = async () => {
+    if (!userId || !date) return;
+    setLoadingHarvest(true);
+    try {
+      let query = supabase.from('harvest_records')
+        .select('variety, size, quantity, unit')
+        .eq('user_id', userId)
+        .eq('date', date);
+      if (farmId) query = (query as any).eq('farm_id', farmId);
+      const { data, error } = await query;
+      if (error || !data?.length) {
+        Alert.alert('안내', '해당 날짜/농장의 수확 데이터가 없습니다.');
+        return;
+      }
+      // 동일 품종+사이즈 합산
+      const merged: Record<string, Entry> = {};
+      for (const r of data) {
+        const key = `${r.variety ?? ''}|${r.size ?? ''}`;
+        if (merged[key]) {
+          merged[key].quantity = String(parseFloat(merged[key].quantity) + r.quantity);
+        } else {
+          merged[key] = {
+            variety: r.variety ?? '',
+            size: r.size ?? '',
+            quantity: String(r.quantity),
+            unit: r.unit ?? 'kg',
+            price: '',
+          };
+        }
+      }
+      setEntries(Object.values(merged));
+    } catch {
+      Alert.alert('오류', '수확 데이터를 불러오는 데 실패했습니다.');
+    } finally {
+      setLoadingHarvest(false);
+    }
+  };
+
   // ── Save ──
   const validate = (): string | null => {
     if (!date) return '날짜를 선택해주세요.';
     if (!cropType.trim()) return '작물을 입력해주세요.';
     if (tab === 'other' && !otherType) return '구분을 선택해주세요.';
-
     if (isEdit) {
       if (!editVariety.trim()) return '품종을 입력해주세요.';
       if (!editSize.trim()) return '사이즈를 입력해주세요.';
       if (!editQty.trim() || isNaN(parseFloat(editQty))) return '수량을 올바르게 입력해주세요.';
+      if (tab === 'sales') {
+        if (!pricePerUnit.trim() || isNaN(parseFloat(pricePerUnit))) return '단가를 입력해주세요.';
+      }
     } else {
       if (entries.length === 0) return '항목을 1개 이상 추가해주세요.';
       for (const e of entries) {
         if (!e.variety.trim()) return '품종이 비어있는 항목이 있습니다.';
         if (!e.size.trim()) return '사이즈가 비어있는 항목이 있습니다.';
       }
-    }
-
-    if (tab === 'sales') {
-      if (!pricePerUnit.trim() || isNaN(parseFloat(pricePerUnit))) return '단가를 입력해주세요.';
+      if (tab === 'sales') {
+        if (entries.some(e => !e.price?.trim() || isNaN(parseFloat(e.price!)))) {
+          return '모든 판매 항목의 단가를 입력해주세요.';
+        }
+      }
     }
     return null;
   };
@@ -240,9 +398,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
       const baseFields = { user_id: userId, farm_id: farmId || null, date, crop_type: cropType || null };
 
       if (isEdit && editRecord) {
-        // ── UPDATE single record ──
         const qty = parseFloat(editQty);
-
         if (editRecord.type === 'harvest') {
           await supabase.from('harvest_records').update({
             farm_id: farmId || null, date, crop_type: cropType || null,
@@ -276,14 +432,12 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         }
 
       } else {
-        // ── INSERT multiple records ──
         if (tab === 'harvest') {
           const rows = entries.map((e) => ({
             ...baseFields, variety: e.variety || null, size: e.size || null,
             quantity: parseFloat(e.quantity), unit: e.unit, note: note || null,
           }));
           await supabase.from('harvest_records').insert(rows).throwOnError();
-
           if (workers.length > 0) {
             const laborRows = workers.map((w) => ({
               user_id: userId, date,
@@ -295,11 +449,11 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           }
 
         } else if (tab === 'sales') {
-          const price = parseFloat(pricePerUnit);
           const cInput = parseFloat(commissionRate || '0') || 0;
           const eCost = parseFloat(extraCost || '0') || 0;
           const rows = entries.map((e) => {
             const qty = parseFloat(e.quantity);
+            const price = parseFloat(e.price ?? '0');
             const rev = qty * price;
             const cAmt = commissionType === '%' ? rev * cInput / 100 : cInput;
             return {
@@ -334,19 +488,27 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   const tabLabel = tab === 'harvest' ? '수확' : tab === 'sales' ? '판매' : '기타';
   const totalSteps = steps.length;
   const allStepsDone = activeStep >= totalSteps;
-
-  // Required count for progress badge (create mode)
   const currentStepDisplay = Math.min(activeStep + 1, totalSteps);
 
-  // ── Entries step content ──
+  // ── Entries content ──
   const EntriesContent = () => (
     <>
+      {/* 입력된 항목 목록 */}
       {entries.length > 0 && (
         <View style={styles.entryList}>
           {entries.map((e, i) => (
-            <View key={i} style={[styles.entryRow, i < entries.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight }]}>
-              <Text style={styles.entryText}>{e.variety} · {e.size} · {e.quantity}{e.unit}</Text>
-              <TouchableOpacity onPress={() => removeEntry(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <View key={i}
+              style={[styles.entryRow, i < entries.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.entryMain}>{e.variety} · {e.size}</Text>
+                <Text style={styles.entrySub}>
+                  {e.quantity}{e.unit}
+                  {tab === 'sales' && e.price
+                    ? ` · ${Number(e.price).toLocaleString()}원/kg` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => removeEntry(i)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Text style={styles.entryRemove}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -354,13 +516,27 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         </View>
       )}
 
+      {/* 수확데이터 가져오기 (판매만) */}
+      {tab === 'sales' && (
+        <TouchableOpacity
+          style={[styles.harvestImportBtn, loadingHarvest && { opacity: 0.5 }]}
+          onPress={loadFromHarvest}
+          disabled={loadingHarvest}
+        >
+          <Text style={styles.harvestImportText}>
+            {loadingHarvest ? '불러오는 중...' : '📥 수확데이터 가져오기'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* 품종 선택 */}
       <View style={styles.entryForm}>
-        {/* 품종 */}
         <Text style={styles.formLabel}>품종</Text>
         {varieties.length > 0 && (
           <View style={styles.chipRow}>
             {varieties.map((v) => (
-              <TouchableOpacity key={v} style={[styles.chip, newVariety === v && styles.chipActive]}
+              <TouchableOpacity key={v}
+                style={[styles.chip, newVariety === v && styles.chipActive]}
                 onPress={() => setNewVariety(v)}>
                 <Text style={[styles.chipText, newVariety === v && styles.chipTextActive]}>{v}</Text>
               </TouchableOpacity>
@@ -370,83 +546,71 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         <TextInput style={[styles.input, { marginTop: 6 }]} value={newVariety} onChangeText={setNewVariety}
           placeholder="품종 선택 또는 직접 입력" placeholderTextColor={Colors.textLight} />
 
-        {/* 사이즈 */}
-        <View style={styles.labelRow}>
-          <Text style={styles.formLabel}>사이즈</Text>
-          {sizeInfoData.length > 0 && (
-            <TouchableOpacity onPress={() => setShowSizeInfo((v) => !v)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={styles.infoIcon}>ℹ</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {showSizeInfo && sizeInfoData.length > 0 && (
-          <View style={styles.sizeInfoBox}>
-            {sizeInfoData.map((s) => (
-              <Text key={s.name} style={styles.sizeInfoText}>{s.name}{s.range ? ` : ${s.range}` : ''}</Text>
-            ))}
-          </View>
-        )}
-        <View style={styles.chipRow}>
-          {sizeOptions.map((s) => (
-            <TouchableOpacity key={s}
-              style={[styles.chip, !customSizeMode && newSize === s && styles.chipActive]}
-              onPress={() => { setCustomSizeMode(false); setNewSize(newSize === s ? '' : s); }}>
-              <Text style={[styles.chipText, !customSizeMode && newSize === s && styles.chipTextActive]}>{s}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={[styles.chip, customSizeMode && styles.chipActive]}
-            onPress={() => { setCustomSizeMode(true); setNewSize(''); }}>
-            <Text style={[styles.chipText, customSizeMode && styles.chipTextActive]}>직접 입력</Text>
-          </TouchableOpacity>
-        </View>
-        {customSizeMode && (
-          <TextInput style={[styles.input, { marginTop: 6 }]} value={newSize} onChangeText={setNewSize}
-            placeholder="예) 왕왕특, 점보" placeholderTextColor={Colors.textLight} autoFocus />
-        )}
-
-        {/* 수량 */}
-        <Text style={[styles.formLabel, { marginTop: Spacing.sm }]}>수량</Text>
-        <View style={styles.qtyRow}>
-          <TextInput style={[styles.input, { flex: 1 }]} value={newQty} onChangeText={setNewQty}
-            placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="decimal-pad" />
-          <View style={styles.unitChipRow}>
-            {unitOptions.map((u) => (
-              <TouchableOpacity key={u} style={[styles.unitChip, newUnit === u && styles.chipActive]}
-                onPress={() => setNewUnit(u)}>
-                <Text style={[styles.chipText, newUnit === u && styles.chipTextActive]}>{u}</Text>
+        {/* 사이즈 탭 → SizeEntryModal */}
+        {newVariety.trim() !== '' && (
+          <>
+            <View style={styles.labelRow}>
+              <Text style={[styles.formLabel, { marginTop: Spacing.sm }]}>사이즈 선택</Text>
+              {sizeInfoData.length > 0 && (
+                <TouchableOpacity onPress={() => setShowSizeInfo(v => !v)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Text style={styles.infoIcon}>ℹ</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {showSizeInfo && sizeInfoData.length > 0 && (
+              <View style={styles.sizeInfoBox}>
+                {sizeInfoData.map((s) => (
+                  <Text key={s.name} style={styles.sizeInfoText}>
+                    {s.name}{s.range ? ` : ${s.range}` : ''}
+                  </Text>
+                ))}
+              </View>
+            )}
+            <Text style={styles.sizeHint}>
+              {tab === 'sales' ? '탭하면 수량/단가 입력' : '탭하면 수량 입력'}
+            </Text>
+            <View style={styles.chipRow}>
+              {sizeOptions.map((s) => (
+                <TouchableOpacity key={s}
+                  style={[styles.chip, styles.sizeChipAction]}
+                  onPress={() => { setSizeModalTarget(s); setSizeModalVisible(true); }}>
+                  <Text style={styles.chipText}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.chip, styles.sizeChipAction]}
+                onPress={() => { setSizeModalTarget(''); setSizeModalVisible(true); }}>
+                <Text style={styles.chipText}>직접 입력</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {entryError ? <Text style={styles.errorText}>{entryError}</Text> : null}
-        <TouchableOpacity style={styles.addEntryBtn} onPress={addEntry}>
-          <Text style={styles.addEntryBtnText}>+ 항목 추가</Text>
-        </TouchableOpacity>
+            </View>
+          </>
+        )}
+        {!!entryError && <Text style={styles.errorText}>{entryError}</Text>}
       </View>
     </>
   );
 
-  // ── Workers section (create harvest only) ──
+  // ── Workers section ──
   const WorkersSection = () => (
     <View style={styles.optionalSection}>
       <Text style={styles.optionalTitle}>작업자 정보 (선택)</Text>
-
       {workers.length > 0 && (
         <View style={styles.entryList}>
           {workers.map((w, i) => (
-            <View key={i} style={[styles.entryRow, i < workers.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight }]}>
-              <Text style={styles.entryText}>
+            <View key={i}
+              style={[styles.entryRow, i < workers.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight }]}>
+              <Text style={styles.entryMain}>
                 {w.name}{w.hours ? ` · ${w.hours}h` : ''} · {Number(w.cost).toLocaleString()}원
               </Text>
-              <TouchableOpacity onPress={() => removeWorker(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => removeWorker(i)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={styles.entryRemove}>✕</Text>
               </TouchableOpacity>
             </View>
           ))}
         </View>
       )}
-
       <View style={styles.entryForm}>
         <View style={styles.workerRow}>
           <View style={{ flex: 2 }}>
@@ -463,7 +627,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         <Text style={[styles.formLabel, { marginTop: 6 }]}>인건비 (원)</Text>
         <TextInput style={styles.input} value={wCost} onChangeText={setWCost}
           placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="decimal-pad" />
-        {workerError ? <Text style={styles.errorText}>{workerError}</Text> : null}
+        {!!workerError && <Text style={styles.errorText}>{workerError}</Text>}
         <TouchableOpacity style={styles.addEntryBtn} onPress={addWorker}>
           <Text style={styles.addEntryBtnText}>+ 작업자 추가</Text>
         </TouchableOpacity>
@@ -474,34 +638,31 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* 헤더 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{isEdit ? `${tabLabel} 수정` : `${tabLabel} 입력`}</Text>
-          {!isEdit && (
+          {!isEdit ? (
             <View style={styles.progressBadge}>
               <Text style={styles.progressText}>{currentStepDisplay}/{totalSteps}</Text>
             </View>
+          ) : (
+            <View style={{ width: 50 }} />
           )}
-          {isEdit && <View style={{ width: 50 }} />}
         </View>
 
         <ScrollView ref={scrollRef} style={styles.scroll} keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }}>
 
           {isEdit ? (
-            /* ═══ EDIT MODE: same rich form as create ═══ */
             <>
-              {/* 날짜 */}
               <SectionCard label="날짜">
                 <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
                   <Text style={styles.fieldBtnText}>📅 {date}</Text>
                 </TouchableOpacity>
               </SectionCard>
 
-              {/* 농장 */}
               <SectionCard label="농장">
                 {farms.length === 0 ? (
                   <Text style={[styles.formLabel, { color: Colors.textSub }]}>
@@ -522,13 +683,11 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                 )}
               </SectionCard>
 
-              {/* 작물 */}
               <SectionCard label="작물">
                 <TextInput style={styles.input} value={cropType} onChangeText={setCropType}
                   placeholder="예) 블루베리, 딸기" placeholderTextColor={Colors.textLight} />
               </SectionCard>
 
-              {/* 기타 구분 */}
               {tab === 'other' && (
                 <SectionCard label="구분">
                   <View style={styles.chipRow}>
@@ -542,7 +701,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                 </SectionCard>
               )}
 
-              {/* 품종 */}
               <SectionCard label="품종">
                 {varieties.length > 0 && (
                   <View style={styles.chipRow}>
@@ -560,12 +718,11 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                   placeholder="품종 선택 또는 직접 입력" placeholderTextColor={Colors.textLight} />
               </SectionCard>
 
-              {/* 사이즈 */}
               <SectionCard label="">
                 <View style={styles.labelRow}>
                   <Text style={styles.formLabel}>사이즈</Text>
                   {sizeInfoData.length > 0 && (
-                    <TouchableOpacity onPress={() => setEditShowSizeInfo((v) => !v)}
+                    <TouchableOpacity onPress={() => setEditShowSizeInfo(v => !v)}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                       <Text style={styles.infoIcon}>ℹ</Text>
                     </TouchableOpacity>
@@ -588,8 +745,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                       <Text style={[styles.chipText, !editCustomSizeMode && editSize === s && styles.chipTextActive]}>{s}</Text>
                     </TouchableOpacity>
                   ))}
-                  <TouchableOpacity
-                    style={[styles.chip, editCustomSizeMode && styles.chipActive]}
+                  <TouchableOpacity style={[styles.chip, editCustomSizeMode && styles.chipActive]}
                     onPress={() => { setEditCustomSizeMode(true); setEditSize(''); }}>
                     <Text style={[styles.chipText, editCustomSizeMode && styles.chipTextActive]}>직접 입력</Text>
                   </TouchableOpacity>
@@ -601,7 +757,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                 )}
               </SectionCard>
 
-              {/* 수량 + 단위 */}
               <SectionCard label="수량">
                 <View style={styles.qtyRow}>
                   <TextInput style={[styles.input, { flex: 1 }]} value={editQty} onChangeText={setEditQty}
@@ -618,7 +773,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                 </View>
               </SectionCard>
 
-              {/* 판매 정보 */}
               {tab === 'sales' && (
                 <SectionCard label="판매 정보">
                   <Text style={styles.subLabel}>단가 (원) *</Text>
@@ -630,7 +784,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                     onChangeText={setCommissionRate} keyboardType="decimal-pad"
                     placeholder="0" placeholderTextColor={Colors.textLight} />
                   <Text style={styles.subLabel}>부수비용 (원)</Text>
-<TextInput style={[styles.input, { marginBottom: 6 }]} value={extraCost}
+                  <TextInput style={[styles.input, { marginBottom: 6 }]} value={extraCost}
                     onChangeText={setExtraCost} keyboardType="decimal-pad"
                     placeholder="0" placeholderTextColor={Colors.textLight} />
                   <Text style={styles.subLabel}>구매자</Text>
@@ -663,37 +817,33 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
             </>
 
           ) : (
-            /* ═══ CREATE MODE: step wizard ═══ */
             <>
               {steps.map((stepId, stepIdx) => {
                 if (stepIdx > activeStep) return null;
                 const isActiveStep = stepIdx === activeStep;
                 const valid = isStepValid(stepId);
-                const stepNum = stepIdx + 1;
 
                 return (
                   <View key={stepId} style={[styles.stepCard, !isActiveStep && styles.stepCardDone]}>
-                    {/* Step header */}
                     <View style={styles.stepHeader}>
                       <View style={styles.stepBadge}>
-                        <Text style={styles.stepBadgeText}>{stepNum}/{totalSteps}</Text>
+                        <Text style={styles.stepBadgeText}>{stepIdx + 1}/{totalSteps}</Text>
                       </View>
                       <Text style={styles.stepLabel}>{getStepLabel(stepId, tab)}</Text>
                     </View>
 
-                    {/* Step body - always visible even for done steps */}
                     <View style={styles.stepBody}>
-                      {/* DATE */}
                       {stepId === 'date' && (
                         <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
                           <Text style={styles.fieldBtnText}>📅 {date}</Text>
                         </TouchableOpacity>
                       )}
 
-                      {/* FARM */}
                       {stepId === 'farm' && (
                         farms.length === 0 ? (
-                          <Text style={[styles.formLabel, { color: Colors.textSub }]}>등록된 농장이 없습니다. 더보기 → 농장 설정에서 추가하세요.</Text>
+                          <Text style={[styles.formLabel, { color: Colors.textSub }]}>
+                            등록된 농장이 없습니다. 더보기 → 농장 설정에서 추가하세요.
+                          </Text>
                         ) : (
                           <View style={styles.chipRow}>
                             {farms.map((f) => (
@@ -709,7 +859,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                         )
                       )}
 
-                      {/* OTHERTYPE */}
                       {stepId === 'otherType' && (
                         <View style={styles.chipRow}>
                           {([['gift', '나눔'], ['waste', '폐기']] as [OtherType, string][]).map(([k, l]) => (
@@ -721,7 +870,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                         </View>
                       )}
 
-                      {/* CROP */}
                       {stepId === 'crop' && (
                         <TextInput style={styles.input} value={cropType} onChangeText={setCropType}
                           placeholder="예) 블루베리, 딸기" placeholderTextColor={Colors.textLight}
@@ -729,18 +877,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                           onSubmitEditing={() => { if (valid && isActiveStep) advanceStep(); }} />
                       )}
 
-                      {/* ENTRIES */}
                       {stepId === 'entries' && EntriesContent()}
 
-                      {/* PRICE */}
-                      {stepId === 'price' && (
-                        <TextInput style={styles.input} value={pricePerUnit} onChangeText={setPricePerUnit}
-                          placeholder="0" placeholderTextColor={Colors.textLight}
-                          keyboardType="decimal-pad" returnKeyType="done"
-                          onSubmitEditing={() => { if (valid && isActiveStep) advanceStep(); }} />
-                      )}
-
-                      {/* 다음 버튼: 현재 active 스텝에만 표시 */}
                       {isActiveStep && !allStepsDone && (
                         <TouchableOpacity
                           style={[styles.nextBtn, !valid && styles.nextBtnDisabled]}
@@ -757,13 +895,10 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                 );
               })}
 
-              {/* 모든 스텝 완료 후 optional 섹션 */}
               {allStepsDone && (
                 <>
-                  {/* 작업자 (수확) */}
                   {tab === 'harvest' && WorkersSection()}
 
-                  {/* Optional fields */}
                   <View style={styles.optionalSection}>
                     <Text style={styles.optionalTitle}>선택 항목</Text>
 
@@ -772,7 +907,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                         <Text style={styles.formLabel}>수수료</Text>
                         <View style={styles.chipRow}>
                           {(['%', '원'] as const).map((t) => (
-                            <TouchableOpacity key={t} style={[styles.chip, commissionType === t && styles.chipActive]}
+                            <TouchableOpacity key={t}
+                              style={[styles.chip, commissionType === t && styles.chipActive]}
                               onPress={() => setCommissionType(t)}>
                               <Text style={[styles.chipText, commissionType === t && styles.chipTextActive]}>
                                 {t === '%' ? '비율 (%)' : '금액 (원)'}
@@ -827,7 +963,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           )}
         </ScrollView>
 
-        {/* 저장 버튼 */}
         <View style={styles.footer}>
           {saving ? (
             <ActivityIndicator color={Colors.primary} />
@@ -847,16 +982,28 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
       <CalendarModal visible={showCalendar} value={date}
         onSelect={(d) => { setDate(d); setShowCalendar(false); if (!isEdit) advanceStep(); }}
         onClose={() => setShowCalendar(false)} />
+
+      {/* 사이즈 수량/단가 입력 모달 */}
+      <SizeEntryModal
+        visible={sizeModalVisible}
+        variety={newVariety}
+        initialSize={sizeModalTarget}
+        unitOptions={unitOptions}
+        isSales={tab === 'sales'}
+        onAdd={(entry) => {
+          setEntryError('');
+          setEntries(prev => [...prev, entry]);
+        }}
+        onClose={() => setSizeModalVisible(false)}
+      />
     </Modal>
   );
 }
 
-// ── Sub-components ──
-
 function SectionCard({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={cardStyles.card}>
-      <Text style={cardStyles.label}>{label}</Text>
+      {!!label && <Text style={cardStyles.label}>{label}</Text>}
       {children}
     </View>
   );
@@ -886,7 +1033,6 @@ const styles = StyleSheet.create({
   },
   progressText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   scroll: { flex: 1 },
-  // Step cards
   stepCard: {
     backgroundColor: Colors.surface, borderRadius: Radius.lg,
     marginBottom: Spacing.sm, padding: Spacing.md,
@@ -901,7 +1047,6 @@ const styles = StyleSheet.create({
   stepBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
   stepLabel: { ...Typography.bodyBold },
   stepBody: {},
-  // Fields
   fieldBtn: {
     backgroundColor: Colors.background, borderRadius: Radius.md,
     padding: 14, borderWidth: 1, borderColor: Colors.border,
@@ -918,23 +1063,36 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.background,
   },
   chipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
+  sizeChipAction: { borderColor: Colors.primary, borderStyle: 'dashed' },
   chipText: { fontSize: 13, color: Colors.textSub, fontWeight: '500' },
   chipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
-  // Next button
   nextBtn: {
     backgroundColor: Colors.primary, borderRadius: Radius.md,
     paddingVertical: 12, alignItems: 'center', marginTop: Spacing.sm,
   },
   nextBtnDisabled: { backgroundColor: Colors.border },
   nextBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  // Entry
+  // Entry list
   entryList: {
     backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
     padding: Spacing.sm, marginBottom: Spacing.sm,
+    borderWidth: 1, borderColor: Colors.primaryLight,
   },
-  entryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 5 },
-  entryText: { ...Typography.caption, color: Colors.primaryDark, flex: 1 },
-  entryRemove: { fontSize: 14, color: Colors.danger, paddingLeft: 8 },
+  entryRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  entryMain: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },
+  entrySub: { fontSize: 12, color: Colors.textSub, marginTop: 2 },
+  entryRemove: { fontSize: 15, color: Colors.danger, paddingLeft: 10 },
+  // Harvest import button
+  harvestImportBtn: {
+    backgroundColor: Colors.surface, borderRadius: Radius.md,
+    paddingVertical: 12, alignItems: 'center', marginBottom: Spacing.sm,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  harvestImportText: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },
+  // Entry form
   entryForm: {
     backgroundColor: Colors.background, borderRadius: Radius.md,
     padding: Spacing.sm, borderWidth: 1, borderColor: Colors.border,
@@ -947,6 +1105,7 @@ const styles = StyleSheet.create({
     padding: Spacing.sm, marginVertical: 4,
   },
   sizeInfoText: { ...Typography.caption, color: Colors.primaryDark, marginVertical: 1 },
+  sizeHint: { fontSize: 11, color: Colors.textLight, marginTop: 4, marginLeft: 2, marginBottom: -2 },
   qtyRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
   unitChipRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
   unitChip: {
@@ -960,18 +1119,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.primaryLight,
   },
   addEntryBtnText: { color: Colors.primaryDark, fontWeight: '700', fontSize: 14 },
-  // Workers
   workerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 0 },
-  // Optional section
   optionalSection: {
     backgroundColor: Colors.surface, borderRadius: Radius.lg,
     padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm,
   },
   optionalTitle: { ...Typography.bodyBold, color: Colors.textSub, marginBottom: Spacing.sm },
-  // Edit mode
-  row3: { flexDirection: 'row', alignItems: 'flex-end' },
   subLabel: { ...Typography.label, marginBottom: 4 },
-  // Footer
   footer: {
     padding: Spacing.lg, paddingBottom: Spacing.xl,
     backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.border,
