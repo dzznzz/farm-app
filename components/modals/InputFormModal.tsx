@@ -243,6 +243,20 @@ async function upsertOther(row: any) {
   }
 }
 
+// 품종 asc → 사이즈 sort_order asc 정렬
+function sortEntries(entries: Entry[], sizeOptions: string[]): Entry[] {
+  return [...entries].sort((a, b) => {
+    const v = a.variety.localeCompare(b.variety, 'ko');
+    if (v !== 0) return v;
+    const ai = sizeOptions.indexOf(a.size);
+    const bi = sizeOptions.indexOf(b.size);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.size.localeCompare(b.size, 'ko');
+  });
+}
+
 // ── Main InputFormModal ──
 export function InputFormModal({
   visible, tab, farms, userId, initialDate, onClose, onSaved, editRecord, groupEditRecords,
@@ -360,7 +374,7 @@ export function InputFormModal({
       price: r.pricePerUnit != null ? String(r.pricePerUnit) : undefined,
       existingId: r.id,
     }));
-    setEntries(preEntries);
+    setEntries(sortEntries(preEntries, sizeOptions));
     setOriginalEntryIds(groupEditRecords.map(r => r.id));
     setActiveStep(steps.length); // allStepsDone
   }, [visible, isGroupEdit, groupEditRecords]);
@@ -450,7 +464,7 @@ export function InputFormModal({
           };
         }
       }
-      setEntries(Object.values(merged));
+      setEntries(sortEntries(Object.values(merged), sizeOptions));
     } catch {
       Alert.alert('오류', '수확 데이터를 불러오는 데 실패했습니다.');
     } finally {
@@ -680,8 +694,24 @@ export function InputFormModal({
                   </View>
                 </View>
               ) : (
-                <Text style={styles.entrySub}>{e.quantity}{e.unit}</Text>
-              )}
+              /* 수확/기타: 수량 인라인 편집 */
+              <View style={styles.entryEditRow}>
+                <View style={styles.entryEditGroup}>
+                  <Text style={styles.entryEditLabel}>수량</Text>
+                  <View style={styles.entryEditInline}>
+                    <TextInput
+                      style={styles.entryEditInput}
+                      value={e.quantity}
+                      onChangeText={(v) => updateEntry(i, 'quantity', v)}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor={Colors.textLight}
+                    />
+                    <Text style={styles.entryEditUnit}>{e.unit}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
             </View>
           ))}
         </View>
@@ -1139,7 +1169,7 @@ export function InputFormModal({
         isSales={tab === 'sales'}
         onAdd={(entry) => {
           setEntryError('');
-          setEntries(prev => [...prev, entry]);
+          setEntries(prev => sortEntries([...prev, entry], sizeOptions));
         }}
         onClose={() => setSizeModalVisible(false)}
       />

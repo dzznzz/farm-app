@@ -17,6 +17,7 @@ import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
 import { BreakdownModal } from '../../components/modals/BreakdownModal';
 import { ExportModal } from '../../components/modals/ExportModal';
+import { CalendarModal } from '../../components/modals/CalendarModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { PeriodType, DailyStat } from '../../types';
 
@@ -70,6 +71,18 @@ function fillFullRange(grouped: DailyStat[], period: PeriodType, from: string, t
   return result;
 }
 
+// 막대 차트용 범위: 오늘 기준 7개 period 뒤로
+function getBarChartRange(period: PeriodType): { from: string; to: string } {
+  const today = new Date();
+  const to = today.toISOString().split('T')[0];
+  const from = new Date(today);
+  if (period === 'day')   from.setDate(from.getDate() - 6);
+  else if (period === 'week')  from.setDate(from.getDate() - 6 * 7);
+  else if (period === 'month') from.setMonth(from.getMonth() - 6);
+  else                         from.setFullYear(from.getFullYear() - 6);
+  return { from: from.toISOString().split('T')[0], to };
+}
+
 function groupStats(stats: DailyStat[], period: PeriodType): DailyStat[] {
   if (period === 'day') return stats;
   const map: Record<string, DailyStat> = {};
@@ -119,8 +132,14 @@ export default function StatisticsScreen() {
   const [chartType, setChartType] = useState<'harvest' | 'revenue'>('harvest');
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showExport, setShowExport] = useState(false);
-  const [breakdownData, setBreakdownData] = useState<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[] } | null>(null);
   const [donutTab, setDonutTab] = useState<'crop' | 'variety' | 'size'>('crop');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const d30Str = (() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().split('T')[0]; })();
+  const [donutFrom, setDonutFrom] = useState(d30Str);
+  const [donutTo, setDonutTo] = useState(todayStr);
+  const [showDonutFromCal, setShowDonutFromCal] = useState(false);
+  const [showDonutToCal, setShowDonutToCal] = useState(false);
+  const [donutData, setDonutData] = useState<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[] } | null>(null);
 
   // 농장 필터
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
@@ -157,8 +176,6 @@ export default function StatisticsScreen() {
     setPeriodSummary(result);
     setPriceHistory(prices);
     setSummaryLoading(false);
-    const { curFrom: f, curTo: t } = getCurrentAndPrevRange(p);
-    fetchBreakdown(user.id, f, t, selectedFarmId).then(setBreakdownData);
   }, [user, fetchStats, selectedFarmId]);
 
   useEffect(() => { loadAll(period); }, [period, user?.id, selectedFarmId]);
@@ -171,10 +188,17 @@ export default function StatisticsScreen() {
 
   useFocusEffect(useCallback(() => { loadAll(period); }, [period, loadAll]));
 
+  // 도넛 차트: 날짜 지정 breakdown 독립 fetch
+  useEffect(() => {
+    if (!user) return;
+    fetchBreakdown(user.id, donutFrom, donutTo, selectedFarmId).then(setDonutData);
+  }, [user, donutFrom, donutTo, selectedFarmId]);
+
   const { curFrom, curTo } = getCurrentAndPrevRange(period);
   const grouped = groupStats(stats, period);
-  const fullRange = fillFullRange(grouped, period, curFrom, curTo);
-  const chartData = fullRange.slice(-7).map((s) => {
+  const { from: barFrom, to: barTo } = getBarChartRange(period);
+  const fullRange = fillFullRange(grouped, period, barFrom, barTo);
+  const chartData = fullRange.map((s) => {
     const val = chartType === 'harvest' ? s.harvest : s.revenue / 10000;
     const hasVal = val > 0;
     return {
@@ -190,15 +214,13 @@ export default function StatisticsScreen() {
       ) : undefined,
     };
   });
-  const hasChartData = chartData.some((d) => d.value > 0);
-
   // 도넛 차트 데이터
-  const donutItems = breakdownData
-    ? (donutTab === 'crop' ? breakdownData.byCrop : donutTab === 'variety' ? breakdownData.byVariety : breakdownData.bySize)
+  const donutItems = donutData
+    ? (donutTab === 'crop' ? donutData.byCrop : donutTab === 'variety' ? donutData.byVariety : donutData.bySize)
     : [];
   const donutTotal = donutItems.reduce((s, i) => s + i.harvest, 0);
-  const pieData = donutItems.slice(0, 6).map((item, i) => ({
-    value: item.harvest || 0.001, // PieChart는 0 값 허용 안함
+  const pieData = donutItems.slice(0, 6).filter(i => i.harvest > 0).map((item, i) => ({
+    value: item.harvest,
     color: DONUT_COLORS[i % DONUT_COLORS.length],
     label: item.key,
   }));
@@ -283,90 +305,103 @@ export default function StatisticsScreen() {
           </View>
         )}
 
-        {/* 차트 카드: 좌(도넛) + 우(막대) */}
+        {/* ── 도넛 차트 카드 (전체 너비) ── */}
         <Card style={styles.chartCard}>
-          <View style={styles.chartSplit}>
-            {/* ── 왼쪽: 도넛 차트 ── */}
-            <View style={styles.chartLeft}>
-              <Text style={styles.chartSectionTitle}>구성 비율</Text>
-              {/* 도넛 탭 */}
-              <View style={styles.donutTabs}>
-                {([['crop', '작물'], ['variety', '품종'], ['size', '사이즈']] as const).map(([k, l]) => (
-                  <TouchableOpacity key={k}
-                    style={[styles.donutTab, donutTab === k && styles.donutTabActive]}
-                    onPress={() => setDonutTab(k)}>
-                    <Text style={[styles.donutTabText, donutTab === k && styles.donutTabTextActive]}>{l}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {pieData.length > 0 ? (
-                <>
-                  <PieChart
-                    donut
-                    data={pieData}
-                    radius={52}
-                    innerRadius={30}
-                    showText={false}
-                    centerLabelComponent={() => (
-                      <Text style={{ fontSize: 9, color: Colors.textSub, textAlign: 'center' }}>
-                        {donutTotal > 0 ? `${donutTotal.toLocaleString()}kg` : ''}
-                      </Text>
-                    )}
-                  />
-                  {/* 범례 */}
-                  <View style={styles.donutLegend}>
-                    {pieData.map((item, i) => (
-                      <View key={i} style={styles.donutLegendRow}>
-                        <View style={[styles.donutDot, { backgroundColor: item.color }]} />
-                        <Text style={styles.donutLegendText} numberOfLines={1}>{item.label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </>
-              ) : (
-                <View style={styles.emptyChart}>
-                  <Text style={styles.emptySubText}>데이터 없음</Text>
-                </View>
-              )}
-            </View>
-
-            {/* ── 오른쪽: 막대 차트 ── */}
-            <View style={styles.chartRight}>
-              <View style={styles.chartHeader}>
-                <Text style={styles.chartSectionTitle}>
-                  {chartType === 'harvest' ? '수확량 추이' : '매출 추이'}
-                </Text>
-                <View style={styles.chartTypeTabs}>
-                  {(['harvest', 'revenue'] as const).map((t) => (
-                    <TouchableOpacity key={t}
-                      style={[styles.chartTypeBtn, chartType === t && styles.chartTypeBtnActive]}
-                      onPress={() => setChartType(t)}>
-                      <Text style={[styles.chartTypeText, chartType === t && styles.chartTypeTextActive]}>
-                        {t === 'harvest' ? '수확' : '매출'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-              {loading ? (
-                <ActivityIndicator color={Colors.primary} style={{ marginVertical: 30 }} />
-              ) : (
-                <BarChart
-                  data={chartData}
-                  barWidth={18}
-                  spacing={8}
-                  roundedTop hideRules
-                  xAxisThickness={0} yAxisThickness={0}
-                  yAxisTextStyle={{ color: Colors.textSub, fontSize: 8 }}
-                  xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 8 }}
-                  noOfSections={3}
-                  maxValue={Math.max(...chartData.map((d) => d.value), 1) * 1.3}
-                  width={160}
-                />
-              )}
+          <View style={styles.chartHeader}>
+            <Text style={Typography.h3}>구성 비율</Text>
+            {/* 날짜 지정 */}
+            <View style={styles.donutDateRow}>
+              <TouchableOpacity style={styles.donutDateBtn} onPress={() => setShowDonutFromCal(true)}>
+                <Text style={styles.donutDateText}>{donutFrom.slice(5).replace('-', '/')}</Text>
+              </TouchableOpacity>
+              <Text style={styles.donutDateSep}>~</Text>
+              <TouchableOpacity style={styles.donutDateBtn} onPress={() => setShowDonutToCal(true)}>
+                <Text style={styles.donutDateText}>{donutTo.slice(5).replace('-', '/')}</Text>
+              </TouchableOpacity>
             </View>
           </View>
+
+          {/* 도넛 탭 */}
+          <View style={styles.donutTabs}>
+            {([['crop', '작물별'], ['variety', '품종별'], ['size', '사이즈별']] as const).map(([k, l]) => (
+              <TouchableOpacity key={k}
+                style={[styles.donutTab, donutTab === k && styles.donutTabActive]}
+                onPress={() => setDonutTab(k)}>
+                <Text style={[styles.donutTabText, donutTab === k && styles.donutTabTextActive]}>{l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {pieData.length > 0 ? (
+            <View style={styles.donutBody}>
+              <PieChart
+                donut
+                data={pieData}
+                radius={80}
+                innerRadius={48}
+                showText={false}
+                centerLabelComponent={() => (
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>
+                      {donutTotal.toLocaleString()}
+                    </Text>
+                    <Text style={{ fontSize: 9, color: Colors.textSub }}>kg</Text>
+                  </View>
+                )}
+              />
+              <View style={styles.donutLegend}>
+                {pieData.map((item, i) => {
+                  const pct = donutTotal > 0 ? ((item.value / donutTotal) * 100).toFixed(1) : '0';
+                  return (
+                    <View key={i} style={styles.donutLegendRow}>
+                      <View style={[styles.donutDot, { backgroundColor: item.color }]} />
+                      <Text style={styles.donutLegendLabel} numberOfLines={1}>{item.label}</Text>
+                      <Text style={styles.donutLegendVal}>{item.value.toLocaleString()}kg</Text>
+                      <Text style={styles.donutLegendPct}>{pct}%</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.emptyChart}>
+              <Text style={styles.emptyText}>데이터가 없습니다</Text>
+              <Text style={styles.emptySubText}>날짜 범위를 조정하거나 입력 탭에서 데이터를 추가하세요</Text>
+            </View>
+          )}
+        </Card>
+
+        {/* ── 막대 차트 카드 (전체 너비) ── */}
+        <Card style={styles.chartCard}>
+          <View style={styles.chartHeader}>
+            <Text style={Typography.h3}>{chartType === 'harvest' ? '수확량 추이' : '매출 추이'}</Text>
+            <View style={styles.chartTypeTabs}>
+              {(['harvest', 'revenue'] as const).map((t) => (
+                <TouchableOpacity key={t}
+                  style={[styles.chartTypeBtn, chartType === t && styles.chartTypeBtnActive]}
+                  onPress={() => setChartType(t)}>
+                  <Text style={[styles.chartTypeText, chartType === t && styles.chartTypeTextActive]}>
+                    {t === 'harvest' ? '수확' : '매출'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          {loading ? (
+            <ActivityIndicator color={Colors.primary} style={{ marginVertical: 40 }} />
+          ) : (
+            <BarChart
+              data={chartData}
+              barWidth={chartData.length > 5 ? 26 : 36}
+              spacing={chartData.length > 5 ? 12 : 20}
+              roundedTop hideRules
+              xAxisThickness={0} yAxisThickness={0}
+              yAxisTextStyle={{ color: Colors.textSub, fontSize: 10 }}
+              xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
+              noOfSections={4}
+              maxValue={Math.max(...chartData.map((d) => d.value), 1) * 1.3}
+            />
+          )}
         </Card>
 
         {/* 기간 비교 */}
@@ -479,6 +514,13 @@ export default function StatisticsScreen() {
       {user && showExport && (
         <ExportModal visible={showExport} onClose={() => setShowExport(false)} userId={user.id} />
       )}
+
+      <CalendarModal visible={showDonutFromCal} value={donutFrom}
+        onSelect={(d) => { setDonutFrom(d); setShowDonutFromCal(false); }}
+        onClose={() => setShowDonutFromCal(false)} />
+      <CalendarModal visible={showDonutToCal} value={donutTo}
+        onSelect={(d) => { setDonutTo(d); setShowDonutToCal(false); }}
+        onClose={() => setShowDonutToCal(false)} />
     </SafeAreaView>
   );
 }
@@ -511,27 +553,32 @@ const styles = StyleSheet.create({
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
   chartCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: 0 },
-  chartSplit: { flexDirection: 'row', gap: Spacing.sm },
-  chartLeft: { flex: 1, minWidth: 0, alignItems: 'center' },
-  chartRight: { flex: 1, minWidth: 0 },
-  chartSectionTitle: { fontSize: 12, fontWeight: '700', color: Colors.text, marginBottom: 6 },
-  chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
-  chartTypeTabs: { flexDirection: 'row', gap: 3 },
-  chartTypeBtn: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
+  chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
+  chartTypeTabs: { flexDirection: 'row', gap: 4 },
+  chartTypeBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   chartTypeBtnActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
-  chartTypeText: { fontSize: 10, color: Colors.textSub, fontWeight: '600' },
+  chartTypeText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   chartTypeTextActive: { color: Colors.primary },
+  // 도넛 날짜 선택
+  donutDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  donutDateBtn: { backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.primaryLight },
+  donutDateText: { fontSize: 13, fontWeight: '700', color: Colors.primaryDark },
+  donutDateSep: { fontSize: 13, color: Colors.textSub },
   // 도넛 탭
-  donutTabs: { flexDirection: 'row', gap: 3, marginBottom: 8 },
-  donutTab: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
+  donutTabs: { flexDirection: 'row', gap: 6, marginBottom: Spacing.md },
+  donutTab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   donutTabActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
-  donutTabText: { fontSize: 9, color: Colors.textSub, fontWeight: '600' },
-  donutTabTextActive: { color: Colors.primaryDark },
-  donutLegend: { width: '100%', marginTop: 6 },
-  donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
-  donutDot: { width: 7, height: 7, borderRadius: 4 },
-  donutLegendText: { fontSize: 9, color: Colors.textSub, flex: 1 },
-  emptyChart: { alignItems: 'center', paddingVertical: 20 },
+  donutTabText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
+  donutTabTextActive: { color: Colors.primaryDark, fontWeight: '700' },
+  // 도넛 본문
+  donutBody: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
+  donutLegend: { flex: 1 },
+  donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  donutDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  donutLegendLabel: { fontSize: 13, color: Colors.text, flex: 1 },
+  donutLegendVal: { fontSize: 12, fontWeight: '700', color: Colors.primaryDark },
+  donutLegendPct: { fontSize: 11, color: Colors.textSub, width: 36, textAlign: 'right' },
+  emptyChart: { alignItems: 'center', paddingVertical: 32 },
   emptyText: { ...Typography.body, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4, color: Colors.textLight },
   compareCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
