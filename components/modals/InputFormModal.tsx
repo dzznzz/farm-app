@@ -12,7 +12,14 @@ type TabType = 'harvest' | 'sales' | 'other';
 type OtherType = 'gift' | 'waste';
 
 interface Farm { id: string; name: string; crop_type: string; is_primary?: boolean }
-interface Entry { variety: string; size: string; quantity: string; unit: string; price?: string }
+interface Entry {
+  variety: string;
+  size: string;
+  quantity: string;
+  unit: string;
+  price?: string;
+  existingId?: string; // 기존 레코드 ID (그룹 수정 시)
+}
 interface WorkerEntry { name: string; hours: string; cost: string }
 interface SizeInfo { name: string; range: string }
 
@@ -21,9 +28,11 @@ interface Props {
   tab: TabType;
   farms: Farm[];
   userId: string;
+  initialDate?: string;
   onClose: () => void;
   onSaved: () => void;
   editRecord?: DisplayRecord;
+  groupEditRecords?: DisplayRecord[]; // 그룹 전체 수정 모드
 }
 
 const BLUEBERRY_SIZES = ['대', '특', '왕특', '왕왕특'];
@@ -43,7 +52,7 @@ function getStepLabel(id: string, tab: TabType): string {
   return map[id] ?? id;
 }
 
-// ── SizeEntryModal (사이즈 탭 → 수량/단가 입력 바텀시트) ──
+// ── SizeEntryModal ──
 interface SizeEntryModalProps {
   visible: boolean;
   variety: string;
@@ -177,29 +186,90 @@ const seStyles = StyleSheet.create({
   addBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });
 
+// ── upsert helpers (같은 farm/crop/variety/size 있으면 qty 누적, 없으면 insert) ──
+async function upsertHarvest(row: any) {
+  let q = supabase.from('harvest_records').select('id, quantity')
+    .eq('user_id', row.user_id).eq('date', row.date);
+  q = row.farm_id ? q.eq('farm_id', row.farm_id) : q.is('farm_id', null);
+  q = row.crop_type ? q.eq('crop_type', row.crop_type) : q.is('crop_type', null);
+  q = row.variety ? q.eq('variety', row.variety) : q.is('variety', null);
+  q = row.size ? q.eq('size', row.size) : q.is('size', null);
+  const { data: existing } = await (q as any).maybeSingle();
+  if (existing) {
+    await supabase.from('harvest_records')
+      .update({ quantity: existing.quantity + row.quantity })
+      .eq('id', existing.id).throwOnError();
+  } else {
+    await supabase.from('harvest_records').insert(row).throwOnError();
+  }
+}
+
+async function upsertSales(row: any) {
+  let q = supabase.from('sales_records').select('id, quantity, total_revenue')
+    .eq('user_id', row.user_id).eq('date', row.date);
+  q = row.farm_id ? q.eq('farm_id', row.farm_id) : q.is('farm_id', null);
+  q = row.crop_type ? q.eq('crop_type', row.crop_type) : q.is('crop_type', null);
+  q = row.variety ? q.eq('variety', row.variety) : q.is('variety', null);
+  q = row.size ? q.eq('size', row.size) : q.is('size', null);
+  const { data: existing } = await (q as any).maybeSingle();
+  if (existing) {
+    const newQty = existing.quantity + row.quantity;
+    const newRev = existing.total_revenue + row.total_revenue;
+    await supabase.from('sales_records')
+      .update({
+        quantity: newQty, total_revenue: newRev,
+        price_per_unit: row.price_per_unit, // 최신 단가로 덮어쓰기
+      })
+      .eq('id', existing.id).throwOnError();
+  } else {
+    await supabase.from('sales_records').insert(row).throwOnError();
+  }
+}
+
+async function upsertOther(row: any) {
+  let q = supabase.from('other_records').select('id, quantity')
+    .eq('user_id', row.user_id).eq('date', row.date).eq('type', row.type);
+  q = row.farm_id ? q.eq('farm_id', row.farm_id) : q.is('farm_id', null);
+  q = row.crop_type ? q.eq('crop_type', row.crop_type) : q.is('crop_type', null);
+  q = row.variety ? q.eq('variety', row.variety) : q.is('variety', null);
+  q = row.size ? q.eq('size', row.size) : q.is('size', null);
+  const { data: existing } = await (q as any).maybeSingle();
+  if (existing) {
+    await supabase.from('other_records')
+      .update({ quantity: existing.quantity + row.quantity })
+      .eq('id', existing.id).throwOnError();
+  } else {
+    await supabase.from('other_records').insert(row).throwOnError();
+  }
+}
+
 // ── Main InputFormModal ──
-export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, editRecord }: Props) {
+export function InputFormModal({
+  visible, tab, farms, userId, initialDate, onClose, onSaved, editRecord, groupEditRecords,
+}: Props) {
   const isEdit = !!editRecord;
+  const isGroupEdit = !!groupEditRecords?.length;
   const today = new Date().toISOString().split('T')[0];
   const scrollRef = useRef<ScrollView>(null);
 
   const steps = getStepIds(tab);
   const [activeStep, setActiveStep] = useState(0);
 
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate ?? today);
   const primaryFarm = farms.find(f => f.is_primary) ?? farms[0];
   const [farmId, setFarmId] = useState(primaryFarm?.id ?? '');
   const [cropType, setCropType] = useState(primaryFarm?.crop_type ?? '블루베리');
   const [otherType, setOtherType] = useState<OtherType>('gift');
 
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [originalEntryIds, setOriginalEntryIds] = useState<string[]>([]); // 그룹 수정 시 원본 ID 추적
   const [newVariety, setNewVariety] = useState('');
   const [showSizeInfo, setShowSizeInfo] = useState(false);
   const [sizeModalVisible, setSizeModalVisible] = useState(false);
   const [sizeModalTarget, setSizeModalTarget] = useState('');
   const [entryError, setEntryError] = useState('');
 
-  // Edit mode
+  // Edit mode fields
   const [editVariety, setEditVariety] = useState('');
   const [editSize, setEditSize] = useState('');
   const [editCustomSizeMode, setEditCustomSizeMode] = useState(false);
@@ -214,14 +284,12 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   const [wCost, setWCost] = useState('');
   const [workerError, setWorkerError] = useState('');
 
-  // Sales (edit mode / optional fields)
+  // Sales / Other
   const [pricePerUnit, setPricePerUnit] = useState('');
   const [commissionRate, setCommissionRate] = useState('');
   const [commissionType, setCommissionType] = useState<'%' | '원'>('%');
   const [extraCost, setExtraCost] = useState('');
   const [buyer, setBuyer] = useState('');
-
-  // Other
   const [recipient, setRecipient] = useState('');
   const [otherExtraCost, setOtherExtraCost] = useState('');
   const [note, setNote] = useState('');
@@ -238,8 +306,10 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   const reset = () => {
     setActiveStep(0);
     const pFarm = farms.find(f => f.is_primary) ?? farms[0];
-    setDate(today); setFarmId(pFarm?.id ?? ''); setCropType(pFarm?.crop_type ?? '블루베리');
-    setOtherType('gift'); setEntries([]);
+    setDate(initialDate ?? today);
+    setFarmId(pFarm?.id ?? '');
+    setCropType(pFarm?.crop_type ?? '블루베리');
+    setOtherType('gift'); setEntries([]); setOriginalEntryIds([]);
     setNewVariety(''); setShowSizeInfo(false);
     setSizeModalVisible(false); setSizeModalTarget(''); setEntryError('');
     setEditVariety(''); setEditSize(''); setEditCustomSizeMode(false);
@@ -249,6 +319,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     setRecipient(''); setOtherExtraCost(''); setNote('');
   };
 
+  // 단일 레코드 수정 모드
   useEffect(() => {
     if (!visible) { reset(); return; }
     if (isEdit && editRecord) {
@@ -269,11 +340,33 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     }
   }, [visible, editRecord]);
 
+  // 그룹 수정 모드 - 기존 항목 전체 pre-fill
+  useEffect(() => {
+    if (!visible || !isGroupEdit || !groupEditRecords?.length) return;
+    const first = groupEditRecords[0];
+    setDate(first.date);
+    if (first.farmId) setFarmId(first.farmId);
+    setCropType(first.cropType ?? '');
+    if (tab === 'other') setOtherType((first.otherSubType as OtherType) ?? 'gift');
+
+    const preEntries: Entry[] = groupEditRecords.map(r => ({
+      variety: r.variety ?? '',
+      size: r.size ?? '',
+      quantity: String(r.quantity),
+      unit: r.unit ?? 'kg',
+      price: r.pricePerUnit != null ? String(r.pricePerUnit) : undefined,
+      existingId: r.id,
+    }));
+    setEntries(preEntries);
+    setOriginalEntryIds(groupEditRecords.map(r => r.id));
+    setActiveStep(steps.length); // allStepsDone
+  }, [visible, isGroupEdit, groupEditRecords]);
+
   useEffect(() => {
     if (visible && !farmId && farms.length > 0) {
       const pFarm = farms.find(f => f.is_primary) ?? farms[0];
       setFarmId(pFarm.id);
-      if (!isEdit && pFarm.crop_type) setCropType(pFarm.crop_type);
+      if (!isEdit && !isGroupEdit && pFarm.crop_type) setCropType(pFarm.crop_type);
     }
   }, [visible, farms]);
 
@@ -297,7 +390,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
       });
   }, [cropType]);
 
-  // ── Step helpers ──
   const isStepValid = (id: string): boolean => {
     if (id === 'date' || id === 'otherType' || id === 'farm') return true;
     if (id === 'crop') return !!cropType.trim();
@@ -310,10 +402,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
   };
 
-  // ── Entry helpers ──
   const removeEntry = (i: number) => setEntries((prev) => prev.filter((_, idx) => idx !== i));
 
-  // ── Worker helpers ──
   const addWorker = () => {
     if (!wName.trim()) { setWorkerError('이름을 입력해주세요.'); return; }
     if (!wCost.trim() || isNaN(parseFloat(wCost))) { setWorkerError('인건비를 입력해주세요.'); return; }
@@ -324,19 +414,18 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
 
   const removeWorker = (i: number) => setWorkers((prev) => prev.filter((_, idx) => idx !== i));
 
-  // ── 수확데이터 가져오기 (sales only) ──
+  // ── 수확데이터 가져오기 ──
   const loadFromHarvest = async () => {
     if (!userId || !date) return;
     setLoadingHarvest(true);
     try {
-      let query = supabase.from('harvest_records')
+      const baseQ = supabase.from('harvest_records')
         .select('variety, size, quantity, unit')
         .eq('user_id', userId)
         .eq('date', date);
-      if (farmId) query = (query as any).eq('farm_id', farmId);
-      const { data, error } = await query;
+      const { data, error } = await (farmId ? baseQ.eq('farm_id', farmId) : baseQ);
       if (error || !data?.length) {
-        Alert.alert('안내', '해당 날짜/농장의 수확 데이터가 없습니다.');
+        Alert.alert('안내', `${date} 날짜의 수확 데이터가 없습니다.`);
         return;
       }
       // 동일 품종+사이즈 합산
@@ -397,6 +486,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     try {
       const baseFields = { user_id: userId, farm_id: farmId || null, date, crop_type: cropType || null };
 
+      // ── 단일 레코드 수정 ──
       if (isEdit && editRecord) {
         const qty = parseFloat(editQty);
         if (editRecord.type === 'harvest') {
@@ -405,7 +495,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
             variety: editVariety || null, size: editSize || null,
             quantity: qty, unit: editUnit || null, note: note || null,
           }).eq('id', editRecord.id).throwOnError();
-
         } else if (editRecord.type === 'sales') {
           const price = parseFloat(pricePerUnit) || 0;
           const cRate = parseFloat(commissionRate) || 0;
@@ -418,7 +507,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
             commission_rate: cRate, commission_amount: rev * cRate / 100,
             extra_cost: eCost, buyer: buyer || null,
           }).eq('id', editRecord.id).throwOnError();
-
         } else {
           const eCost = parseFloat(otherExtraCost) || 0;
           await supabase.from('other_records').update({
@@ -431,13 +519,65 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           }).eq('id', editRecord.id).throwOnError();
         }
 
+      // ── 그룹 수정 ──
+      } else if (isGroupEdit) {
+        const table = tab === 'harvest' ? 'harvest_records'
+          : tab === 'sales' ? 'sales_records' : 'other_records';
+
+        // 삭제된 항목 처리
+        const finalIds = entries.map(e => e.existingId).filter(Boolean) as string[];
+        const toDelete = originalEntryIds.filter(id => !finalIds.includes(id));
+        for (const id of toDelete) {
+          await supabase.from(table).delete().eq('id', id).throwOnError();
+        }
+
+        // 기존 항목 UPDATE, 새 항목 INSERT(upsert)
+        for (const e of entries) {
+          const qty = parseFloat(e.quantity);
+          if (e.existingId) {
+            if (tab === 'harvest') {
+              await supabase.from('harvest_records').update({
+                farm_id: farmId || null, date, crop_type: cropType || null,
+                variety: e.variety || null, size: e.size || null,
+                quantity: qty, unit: e.unit,
+              }).eq('id', e.existingId).throwOnError();
+            } else if (tab === 'sales') {
+              const price = parseFloat(e.price ?? '0');
+              await supabase.from('sales_records').update({
+                farm_id: farmId || null, date, crop_type: cropType || null,
+                variety: e.variety || null, size: e.size || null,
+                quantity: qty, price_per_unit: price, total_revenue: qty * price,
+              }).eq('id', e.existingId).throwOnError();
+            } else {
+              await supabase.from('other_records').update({
+                farm_id: farmId || null, date, crop_type: cropType || null,
+                variety: e.variety || null, size: e.size || null,
+                quantity: qty, unit: e.unit, type: otherType,
+              }).eq('id', e.existingId).throwOnError();
+            }
+          } else {
+            // 새로 추가된 항목 → upsert
+            if (tab === 'harvest') {
+              await upsertHarvest({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, unit: e.unit, note: note || null });
+            } else if (tab === 'sales') {
+              const price = parseFloat(e.price ?? '0');
+              const rev = qty * price;
+              await upsertSales({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, price_per_unit: price, total_revenue: rev, buyer: buyer || null, commission_rate: 0, commission_amount: 0, extra_cost: 0 });
+            } else {
+              await upsertOther({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, unit: e.unit, type: otherType, recipient: otherType === 'gift' ? (recipient || null) : null, extra_cost: null, note: note || null });
+            }
+          }
+        }
+
+      // ── 신규 입력 (upsert) ──
       } else {
         if (tab === 'harvest') {
-          const rows = entries.map((e) => ({
-            ...baseFields, variety: e.variety || null, size: e.size || null,
-            quantity: parseFloat(e.quantity), unit: e.unit, note: note || null,
-          }));
-          await supabase.from('harvest_records').insert(rows).throwOnError();
+          for (const e of entries) {
+            await upsertHarvest({
+              ...baseFields, variety: e.variety || null, size: e.size || null,
+              quantity: parseFloat(e.quantity), unit: e.unit, note: note || null,
+            });
+          }
           if (workers.length > 0) {
             const laborRows = workers.map((w) => ({
               user_id: userId, date,
@@ -447,33 +587,31 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
             }));
             await supabase.from('labor_records').insert(laborRows).throwOnError();
           }
-
         } else if (tab === 'sales') {
           const cInput = parseFloat(commissionRate || '0') || 0;
           const eCost = parseFloat(extraCost || '0') || 0;
-          const rows = entries.map((e) => {
+          for (const e of entries) {
             const qty = parseFloat(e.quantity);
             const price = parseFloat(e.price ?? '0');
             const rev = qty * price;
             const cAmt = commissionType === '%' ? rev * cInput / 100 : cInput;
-            return {
+            await upsertSales({
               ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty,
               price_per_unit: price, total_revenue: rev, buyer: buyer || null,
               commission_rate: commissionType === '%' ? cInput : 0,
               commission_amount: cAmt, extra_cost: eCost,
-            };
-          });
-          await supabase.from('sales_records').insert(rows).throwOnError();
-
+            });
+          }
         } else {
           const eCost = parseFloat(otherExtraCost || '0') || 0;
-          const rows = entries.map((e) => ({
-            ...baseFields, variety: e.variety || null, size: e.size || null,
-            quantity: parseFloat(e.quantity), unit: e.unit,
-            type: otherType, recipient: otherType === 'gift' ? (recipient || null) : null,
-            extra_cost: eCost > 0 ? eCost : null, note: note || null,
-          }));
-          await supabase.from('other_records').insert(rows).throwOnError();
+          for (const e of entries) {
+            await upsertOther({
+              ...baseFields, variety: e.variety || null, size: e.size || null,
+              quantity: parseFloat(e.quantity), unit: e.unit,
+              type: otherType, recipient: otherType === 'gift' ? (recipient || null) : null,
+              extra_cost: eCost > 0 ? eCost : null, note: note || null,
+            });
+          }
         }
       }
 
@@ -490,10 +628,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
   const allStepsDone = activeStep >= totalSteps;
   const currentStepDisplay = Math.min(activeStep + 1, totalSteps);
 
-  // ── Entries content ──
   const EntriesContent = () => (
     <>
-      {/* 입력된 항목 목록 */}
       {entries.length > 0 && (
         <View style={styles.entryList}>
           {entries.map((e, i) => (
@@ -503,8 +639,7 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                 <Text style={styles.entryMain}>{e.variety} · {e.size}</Text>
                 <Text style={styles.entrySub}>
                   {e.quantity}{e.unit}
-                  {tab === 'sales' && e.price
-                    ? ` · ${Number(e.price).toLocaleString()}원/kg` : ''}
+                  {tab === 'sales' && e.price ? ` · ${Number(e.price).toLocaleString()}원` : ''}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => removeEntry(i)}
@@ -516,7 +651,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         </View>
       )}
 
-      {/* 수확데이터 가져오기 (판매만) */}
       {tab === 'sales' && (
         <TouchableOpacity
           style={[styles.harvestImportBtn, loadingHarvest && { opacity: 0.5 }]}
@@ -529,7 +663,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         </TouchableOpacity>
       )}
 
-      {/* 품종 선택 */}
       <View style={styles.entryForm}>
         <Text style={styles.formLabel}>품종</Text>
         {varieties.length > 0 && (
@@ -546,7 +679,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
         <TextInput style={[styles.input, { marginTop: 6 }]} value={newVariety} onChangeText={setNewVariety}
           placeholder="품종 선택 또는 직접 입력" placeholderTextColor={Colors.textLight} />
 
-        {/* 사이즈 탭 → SizeEntryModal */}
         {newVariety.trim() !== '' && (
           <>
             <View style={styles.labelRow}>
@@ -572,14 +704,12 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
             </Text>
             <View style={styles.chipRow}>
               {sizeOptions.map((s) => (
-                <TouchableOpacity key={s}
-                  style={[styles.chip, styles.sizeChipAction]}
+                <TouchableOpacity key={s} style={[styles.chip, styles.sizeChipAction]}
                   onPress={() => { setSizeModalTarget(s); setSizeModalVisible(true); }}>
                   <Text style={styles.chipText}>{s}</Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity
-                style={[styles.chip, styles.sizeChipAction]}
+              <TouchableOpacity style={[styles.chip, styles.sizeChipAction]}
                 onPress={() => { setSizeModalTarget(''); setSizeModalVisible(true); }}>
                 <Text style={styles.chipText}>직접 입력</Text>
               </TouchableOpacity>
@@ -591,7 +721,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     </>
   );
 
-  // ── Workers section ──
   const WorkersSection = () => (
     <View style={styles.optionalSection}>
       <Text style={styles.optionalTitle}>작업자 정보 (선택)</Text>
@@ -635,6 +764,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
     </View>
   );
 
+  const headerTitle = isGroupEdit ? `${tabLabel} 수정` : isEdit ? `${tabLabel} 수정` : `${tabLabel} 입력`;
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -642,8 +773,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{isEdit ? `${tabLabel} 수정` : `${tabLabel} 입력`}</Text>
-          {!isEdit ? (
+          <Text style={styles.headerTitle}>{headerTitle}</Text>
+          {!isEdit && !isGroupEdit ? (
             <View style={styles.progressBadge}>
               <Text style={styles.progressText}>{currentStepDisplay}/{totalSteps}</Text>
             </View>
@@ -656,17 +787,17 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
           contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }}>
 
           {isEdit ? (
+            // ── 단일 레코드 수정 폼 ──
             <>
               <SectionCard label="날짜">
                 <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
                   <Text style={styles.fieldBtnText}>📅 {date}</Text>
                 </TouchableOpacity>
               </SectionCard>
-
               <SectionCard label="농장">
                 {farms.length === 0 ? (
                   <Text style={[styles.formLabel, { color: Colors.textSub }]}>
-                    등록된 농장이 없습니다. 더보기 → 농장 설정에서 추가하세요.
+                    등록된 농장이 없습니다.
                   </Text>
                 ) : (
                   <View style={styles.chipRow}>
@@ -682,12 +813,10 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                   </View>
                 )}
               </SectionCard>
-
               <SectionCard label="작물">
                 <TextInput style={styles.input} value={cropType} onChangeText={setCropType}
                   placeholder="예) 블루베리, 딸기" placeholderTextColor={Colors.textLight} />
               </SectionCard>
-
               {tab === 'other' && (
                 <SectionCard label="구분">
                   <View style={styles.chipRow}>
@@ -700,7 +829,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                   </View>
                 </SectionCard>
               )}
-
               <SectionCard label="품종">
                 {varieties.length > 0 && (
                   <View style={styles.chipRow}>
@@ -717,7 +845,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                   value={editVariety} onChangeText={setEditVariety}
                   placeholder="품종 선택 또는 직접 입력" placeholderTextColor={Colors.textLight} />
               </SectionCard>
-
               <SectionCard label="">
                 <View style={styles.labelRow}>
                   <Text style={styles.formLabel}>사이즈</Text>
@@ -756,7 +883,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                     placeholder="예) 왕왕특, 점보" placeholderTextColor={Colors.textLight} autoFocus />
                 )}
               </SectionCard>
-
               <SectionCard label="수량">
                 <View style={styles.qtyRow}>
                   <TextInput style={[styles.input, { flex: 1 }]} value={editQty} onChangeText={setEditQty}
@@ -772,7 +898,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                   </View>
                 </View>
               </SectionCard>
-
               {tab === 'sales' && (
                 <SectionCard label="판매 정보">
                   <Text style={styles.subLabel}>단가 (원) *</Text>
@@ -792,21 +917,18 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                     placeholder="구매자명" placeholderTextColor={Colors.textLight} />
                 </SectionCard>
               )}
-
               {tab === 'other' && otherType === 'gift' && (
                 <SectionCard label="받는 분">
                   <TextInput style={styles.input} value={recipient} onChangeText={setRecipient}
                     placeholder="친구, 지인, 이웃 등" placeholderTextColor={Colors.textLight} />
                 </SectionCard>
               )}
-
               {tab === 'other' && (
                 <SectionCard label="부수비용 (원)">
                   <TextInput style={styles.input} value={otherExtraCost} onChangeText={setOtherExtraCost}
                     keyboardType="decimal-pad" placeholder="0" placeholderTextColor={Colors.textLight} />
                 </SectionCard>
               )}
-
               {tab !== 'sales' && (
                 <SectionCard label="메모">
                   <TextInput style={[styles.input, { height: 70, textAlignVertical: 'top' }]}
@@ -815,8 +937,8 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                 </SectionCard>
               )}
             </>
-
           ) : (
+            // ── 신규 입력 / 그룹 수정 (스텝 위자드) ──
             <>
               {steps.map((stepId, stepIdx) => {
                 if (stepIdx > activeStep) return null;
@@ -831,14 +953,12 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                       </View>
                       <Text style={styles.stepLabel}>{getStepLabel(stepId, tab)}</Text>
                     </View>
-
                     <View style={styles.stepBody}>
                       {stepId === 'date' && (
                         <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
                           <Text style={styles.fieldBtnText}>📅 {date}</Text>
                         </TouchableOpacity>
                       )}
-
                       {stepId === 'farm' && (
                         farms.length === 0 ? (
                           <Text style={[styles.formLabel, { color: Colors.textSub }]}>
@@ -858,7 +978,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                           </View>
                         )
                       )}
-
                       {stepId === 'otherType' && (
                         <View style={styles.chipRow}>
                           {([['gift', '나눔'], ['waste', '폐기']] as [OtherType, string][]).map(([k, l]) => (
@@ -869,14 +988,12 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                           ))}
                         </View>
                       )}
-
                       {stepId === 'crop' && (
                         <TextInput style={styles.input} value={cropType} onChangeText={setCropType}
                           placeholder="예) 블루베리, 딸기" placeholderTextColor={Colors.textLight}
                           returnKeyType="done"
                           onSubmitEditing={() => { if (valid && isActiveStep) advanceStep(); }} />
                       )}
-
                       {stepId === 'entries' && EntriesContent()}
 
                       {isActiveStep && !allStepsDone && (
@@ -898,17 +1015,14 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
               {allStepsDone && (
                 <>
                   {tab === 'harvest' && WorkersSection()}
-
                   <View style={styles.optionalSection}>
                     <Text style={styles.optionalTitle}>선택 항목</Text>
-
                     {tab === 'sales' && (
                       <>
                         <Text style={styles.formLabel}>수수료</Text>
                         <View style={styles.chipRow}>
                           {(['%', '원'] as const).map((t) => (
-                            <TouchableOpacity key={t}
-                              style={[styles.chip, commissionType === t && styles.chipActive]}
+                            <TouchableOpacity key={t} style={[styles.chip, commissionType === t && styles.chipActive]}
                               onPress={() => setCommissionType(t)}>
                               <Text style={[styles.chipText, commissionType === t && styles.chipTextActive]}>
                                 {t === '%' ? '비율 (%)' : '금액 (원)'}
@@ -930,7 +1044,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                           placeholder="구매자명 또는 판매처" placeholderTextColor={Colors.textLight} />
                       </>
                     )}
-
                     {tab === 'harvest' && (
                       <>
                         <Text style={styles.formLabel}>메모</Text>
@@ -939,7 +1052,6 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
                           placeholder="특이사항" placeholderTextColor={Colors.textLight} multiline />
                       </>
                     )}
-
                     {tab === 'other' && (
                       <>
                         {otherType === 'gift' && (
@@ -968,11 +1080,11 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
             <ActivityIndicator color={Colors.primary} />
           ) : (
             <TouchableOpacity
-              style={[styles.saveBtn, (!isEdit && !allStepsDone) && styles.saveBtnDimmed]}
+              style={[styles.saveBtn, (!isEdit && !isGroupEdit && !allStepsDone) && styles.saveBtnDimmed]}
               onPress={handleSave}
             >
               <Text style={styles.saveBtnText}>
-                {isEdit ? '수정 저장' : allStepsDone ? `${tabLabel} 저장` : '모든 항목 입력 후 저장 가능'}
+                {isEdit || isGroupEdit ? '수정 저장' : allStepsDone ? `${tabLabel} 저장` : '모든 항목 입력 후 저장 가능'}
               </Text>
             </TouchableOpacity>
           )}
@@ -980,10 +1092,9 @@ export function InputFormModal({ visible, tab, farms, userId, onClose, onSaved, 
       </KeyboardAvoidingView>
 
       <CalendarModal visible={showCalendar} value={date}
-        onSelect={(d) => { setDate(d); setShowCalendar(false); if (!isEdit) advanceStep(); }}
+        onSelect={(d) => { setDate(d); setShowCalendar(false); if (!isEdit && !isGroupEdit) advanceStep(); }}
         onClose={() => setShowCalendar(false)} />
 
-      {/* 사이즈 수량/단가 입력 모달 */}
       <SizeEntryModal
         visible={sizeModalVisible}
         variety={newVariety}
@@ -1072,7 +1183,6 @@ const styles = StyleSheet.create({
   },
   nextBtnDisabled: { backgroundColor: Colors.border },
   nextBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  // Entry list
   entryList: {
     backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
     padding: Spacing.sm, marginBottom: Spacing.sm,
@@ -1085,14 +1195,12 @@ const styles = StyleSheet.create({
   entryMain: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },
   entrySub: { fontSize: 12, color: Colors.textSub, marginTop: 2 },
   entryRemove: { fontSize: 15, color: Colors.danger, paddingLeft: 10 },
-  // Harvest import button
   harvestImportBtn: {
     backgroundColor: Colors.surface, borderRadius: Radius.md,
     paddingVertical: 12, alignItems: 'center', marginBottom: Spacing.sm,
     borderWidth: 1, borderColor: Colors.border,
   },
   harvestImportText: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },
-  // Entry form
   entryForm: {
     backgroundColor: Colors.background, borderRadius: Radius.md,
     padding: Spacing.sm, borderWidth: 1, borderColor: Colors.border,

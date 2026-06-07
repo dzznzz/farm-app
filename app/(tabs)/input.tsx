@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Platform, Modal,
+  ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -93,8 +93,7 @@ export default function InputScreen() {
   const [showForm, setShowForm] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<DisplayRecord | null>(null);
   const [editRecord, setEditRecord] = useState<DisplayRecord | undefined>(undefined);
-  const [groupListRecords, setGroupListRecords] = useState<DisplayRecord[]>([]);
-  const [showGroupList, setShowGroupList] = useState(false);
+  const [groupEditRecords, setGroupEditRecords] = useState<DisplayRecord[] | undefined>(undefined);
 
   useEffect(() => {
     if (!user) return;
@@ -161,13 +160,10 @@ export default function InputScreen() {
   const filtered = records.filter((r) => r.type === tab);
   const grouped = groupByFarmCrop(filtered, tab);
 
-  const handleSizeRowTap = (recs: DisplayRecord[]) => {
-    if (recs.length === 1) {
-      setSelectedRecord(recs[0]);
-    } else {
-      setGroupListRecords(recs);
-      setShowGroupList(true);
-    }
+  const openGroupEdit = (group: FarmCropGroup) => {
+    setGroupEditRecords(group.allRecords);
+    setEditRecord(undefined);
+    setShowForm(true);
   };
 
   const otherTypeLabel = (subType?: string) =>
@@ -223,45 +219,41 @@ export default function InputScreen() {
             </View>
           ) : (
             grouped.map((group, gi) => (
-              <Card key={`${group.farmId}-${group.cropType}-${group.otherSubType ?? ''}-${gi}`}
-                style={styles.groupCard}>
-                {/* 카드 헤더 */}
-                <View style={styles.groupHeader}>
-                  {group.farmName && (
-                    <View style={styles.farmBadge}>
-                      <Text style={styles.farmBadgeText}>{group.farmName}</Text>
-                    </View>
-                  )}
-                  {tab === 'other' && group.otherSubType && (
-                    <View style={[styles.typeBadge, { backgroundColor: otherTypeColor(group.otherSubType) + '22' }]}>
-                      <Text style={[styles.typeBadgeText, { color: otherTypeColor(group.otherSubType) }]}>
-                        {otherTypeLabel(group.otherSubType)}
-                      </Text>
-                    </View>
-                  )}
-                  <Text style={styles.groupCrop}>{group.cropType || '(작물 미입력)'}</Text>
-                </View>
-
-                <View style={styles.divider} />
-
-                {/* 품종 그룹 */}
-                {group.varieties.map((vg, vi) => (
-                  <View key={`${vg.variety}-${vi}`}
-                    style={[styles.varietyBlock, vi > 0 && styles.varietyBlockSep]}>
-                    {vg.variety !== '' && (
-                      <Text style={styles.varietyLabel}>{vg.variety}</Text>
+              <TouchableOpacity
+                key={`${group.farmId}-${group.cropType}-${group.otherSubType ?? ''}-${gi}`}
+                onPress={() => openGroupEdit(group)}
+                activeOpacity={0.75}
+              >
+                <Card style={styles.groupCard}>
+                  {/* 카드 헤더 */}
+                  <View style={styles.groupHeader}>
+                    {group.farmName && (
+                      <View style={styles.farmBadge}>
+                        <Text style={styles.farmBadgeText}>{group.farmName}</Text>
+                      </View>
                     )}
-                    {vg.sizes.map((sr) => {
-                      const matchingRecords = group.allRecords.filter(
-                        r => (r.variety ?? '') === vg.variety && (r.size ?? '') === sr.size
-                      );
-                      return (
-                        <TouchableOpacity
-                          key={sr.size}
-                          style={styles.sizeRow}
-                          onPress={() => handleSizeRowTap(matchingRecords)}
-                          activeOpacity={0.5}
-                        >
+                    {tab === 'other' && group.otherSubType && (
+                      <View style={[styles.typeBadge, { backgroundColor: otherTypeColor(group.otherSubType) + '22' }]}>
+                        <Text style={[styles.typeBadgeText, { color: otherTypeColor(group.otherSubType) }]}>
+                          {otherTypeLabel(group.otherSubType)}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.groupCrop}>{group.cropType || '(작물 미입력)'}</Text>
+                    <Text style={styles.editHint}>수정 ›</Text>
+                  </View>
+
+                  <View style={styles.divider} />
+
+                  {/* 품종 그룹 */}
+                  {group.varieties.map((vg, vi) => (
+                    <View key={`${vg.variety}-${vi}`}
+                      style={[styles.varietyBlock, vi > 0 && styles.varietyBlockSep]}>
+                      {vg.variety !== '' && (
+                        <Text style={styles.varietyLabel}>{vg.variety}</Text>
+                      )}
+                      {vg.sizes.map((sr) => (
+                        <View key={sr.size} style={styles.sizeRow}>
                           <Text style={styles.sizeLabel}>{sr.size || '—'}</Text>
                           <View style={styles.sizeRight}>
                             {tab === 'sales' && (sr.revenue ?? 0) > 0 && (
@@ -274,36 +266,40 @@ export default function InputScreen() {
                                 ? sr.quantity
                                 : parseFloat(sr.quantity.toFixed(2))}{sr.unit}
                             </Text>
-                            {matchingRecords.length > 1 && (
-                              <Text style={styles.mergeTag}>{matchingRecords.length}건</Text>
-                            )}
                           </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ))}
-              </Card>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </Card>
+              </TouchableOpacity>
             ))
           )}
         </ScrollView>
       )}
 
       {/* FAB */}
-      <TouchableOpacity style={styles.fab} onPress={() => setShowForm(true)} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.fab} onPress={() => {
+        setGroupEditRecords(undefined);
+        setEditRecord(undefined);
+        setShowForm(true);
+      }} activeOpacity={0.85}>
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
 
       <InputFormModal
         visible={showForm}
-        tab={editRecord?.type ?? tab}
+        tab={tab}
         farms={farms}
         userId={user?.id ?? ''}
+        initialDate={date}
         editRecord={editRecord}
-        onClose={() => { setShowForm(false); setEditRecord(undefined); }}
+        groupEditRecords={groupEditRecords}
+        onClose={() => { setShowForm(false); setEditRecord(undefined); setGroupEditRecords(undefined); }}
         onSaved={() => { loadRecords(date); }}
       />
 
+      {/* 개별 레코드 상세 (RecordDetailModal은 그룹 수정 폼에서 대체됨, 필요 시 유지) */}
       <RecordDetailModal
         visible={selectedRecord !== null}
         record={selectedRecord}
@@ -312,42 +308,10 @@ export default function InputScreen() {
         onEdit={(r) => {
           setSelectedRecord(null);
           setEditRecord(r);
+          setGroupEditRecords(undefined);
           setShowForm(true);
         }}
       />
-
-      {/* 복수 기록 선택 바텀시트 */}
-      <Modal
-        visible={showGroupList}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowGroupList(false)}
-      >
-        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1}
-          onPress={() => setShowGroupList(false)}>
-          <TouchableOpacity activeOpacity={1} style={styles.sheetBox}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>기록 선택</Text>
-            <Text style={styles.sheetSub}>합산된 {groupListRecords.length}건의 기록</Text>
-            {groupListRecords.map((r, i) => (
-              <TouchableOpacity
-                key={r.id}
-                style={[styles.sheetItem, i < groupListRecords.length - 1 && styles.sheetItemBorder]}
-                onPress={() => { setShowGroupList(false); setSelectedRecord(r); }}
-              >
-                <Text style={styles.sheetItemMain}>
-                  {[r.variety, r.size].filter(Boolean).join(' · ') || '(품종/사이즈 미입력)'}
-                </Text>
-                <Text style={styles.sheetItemSub}>
-                  {r.quantity}{r.unit ?? 'kg'}
-                  {r.type === 'sales' && r.totalRevenue
-                    ? ` · ${r.totalRevenue.toLocaleString()}원` : ''}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -397,13 +361,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full,
   },
   typeBadgeText: { fontSize: 11, fontWeight: '700' },
-  groupCrop: { fontSize: 16, fontWeight: '800', color: Colors.text },
+  groupCrop: { fontSize: 16, fontWeight: '800', color: Colors.text, flex: 1 },
+  editHint: { fontSize: 12, color: Colors.textLight },
   divider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.md },
   varietyBlock: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: 4 },
   varietyBlockSep: { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 2 },
   varietyLabel: {
     fontSize: 12, fontWeight: '700', color: Colors.textSub,
-    marginBottom: 2, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.5,
+    marginBottom: 2, marginLeft: 4,
   },
   sizeRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -414,27 +379,6 @@ const styles = StyleSheet.create({
   sizeRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sizeRevenue: { fontSize: 13, color: Colors.success, fontWeight: '600' },
   sizeQty: { fontSize: 17, fontWeight: '800', color: Colors.primaryDark, minWidth: 60, textAlign: 'right' },
-  mergeTag: {
-    fontSize: 10, fontWeight: '700', color: Colors.textLight,
-    backgroundColor: Colors.border, borderRadius: Radius.full,
-    paddingHorizontal: 5, paddingVertical: 1,
-  },
-  // Bottom sheet
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheetBox: {
-    backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: Spacing.lg, paddingBottom: 40,
-  },
-  sheetHandle: {
-    width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2,
-    alignSelf: 'center', marginBottom: Spacing.md,
-  },
-  sheetTitle: { ...Typography.h3, marginBottom: 2 },
-  sheetSub: { ...Typography.caption, color: Colors.textSub, marginBottom: Spacing.md },
-  sheetItem: { paddingVertical: 14 },
-  sheetItemBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  sheetItemMain: { ...Typography.bodyBold },
-  sheetItemSub: { ...Typography.caption, color: Colors.textSub, marginTop: 3 },
   // FAB
   fab: {
     position: 'absolute',
