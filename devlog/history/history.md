@@ -2,6 +2,110 @@
 
 ---
 
+## 2026-06-07 (8차) — 판매 유형별 구분 저장 버그 수정
+
+| 파일 | 변경 내용 |
+|---|---|
+| `components/modals/InputFormModal.tsx` | upsertSales 매칭 키에 sale_type 추가 |
+
+---
+
+## 2026-06-07 (7차) — 판매 유형 필수 STEP + 판매 묶음 카드 + 수정폼 pre-fill
+
+**커밋**: `fa5ffdd` feat: 판매 유형 필수 STEP + 판매 묶음 카드 + 수정폼 pre-fill 수정
+
+| 파일 | 변경 내용 |
+|---|---|
+| `supabase/migrations/supabase_migration_009.sql` | sales_records.sale_type TEXT 컬럼 추가 |
+| `components/modals/InputFormModal.tsx` | 판매 유형 STEP 추가, 그룹 수정 pre-fill 완성 |
+| `app/(tabs)/input.tsx` | groupSalesRecords 함수(buyer+saleType 묶음), 묶음 카드 렌더링 |
+| `components/modals/RecordDetailModal.tsx` | sale_type 표시 추가 |
+| `app/(tabs)/index.tsx` | 홈 판매 요약 연동 |
+
+---
+
+## 2026-06-07 (6차) — 통계 미래 날짜 선택 차단
+
+**커밋**: `8b0c528` feat: 통계 미래 날짜 선택 차단
+
+| 파일 | 변경 내용 |
+|---|---|
+| `components/modals/CalendarModal.tsx` | maxDate prop 추가, 미래 날짜 회색·비활성 처리 |
+| `app/(tabs)/statistics.tsx` | `›` 버튼 today 이후 비활성화, CalendarModal에 maxDate 전달 |
+
+---
+
+## 2026-06-07 (5차) — 통계 날짜 네비게이터 + 기간별 날짜 선택 + 품종·사이즈 도넛
+
+**커밋**: `ba2c5f2` feat: 통계 날짜 네비게이터 + 기간별 날짜 선택 + 품종·사이즈 도넛
+
+| 파일 | 변경 내용 |
+|---|---|
+| `app/(tabs)/statistics.tsx` | 날짜 네비게이터 최상단 이동, 기간별 ‹›버튼+라벨탭 CalendarModal 연동 |
+| `hooks/useStats.ts` | fetchPeriodSummaryForRange 신규, byVarietySize 집계 추가 |
+
+---
+
+## 2026-06-07 (4차) — 통계 차트 개선 + 수정폼 개선
+
+**커밋**: `b7174a4` feat: 통계 차트 개선 + 수정폼 개선
+
+| 파일 | 변경 내용 |
+|---|---|
+| `app/(tabs)/statistics.tsx` | 도넛·막대 차트 전체너비 카드 분리, getBarChartRange, breakdownData 독립 fetch |
+| `components/modals/InputFormModal.tsx` | 수확/기타 수량 인라인 TextInput, 항목 정렬(품종 asc → sizeOptions) |
+
+---
+
+## 2026-06-07 (3차) — 입력 날짜 동기화 + 통계 차트 도넛/막대 분할
+
+**커밋**: `5372fc4` feat: 입력 날짜 동기화 + 통계 차트 도넛/막대 분할
+
+| 파일 | 변경 내용 |
+|---|---|
+| `app/(tabs)/statistics.tsx` | PieChart 도입, 도넛·막대 좌우 분할, fillFullRange, topLabelComponent |
+| `components/modals/InputFormModal.tsx` | visible 변경 시 initialDate 동기화 |
+
+---
+
+## 2026-06-07 (2차) — 수확데이터 인라인 편집 + upsert + 그룹 수정
+
+**커밋**: `b923326`, `665c121`
+
+| 파일 | 변경 내용 |
+|---|---|
+| `components/modals/InputFormModal.tsx` | updateEntry 헬퍼, 수량·단가 TextInput 인라인, upsertHarvest/upsertSales/upsertOther 분리, initialDate prop, 그룹 pre-fill |
+| `app/(tabs)/input.tsx` | openGroupEdit, 그룹 수정 폼 연동 |
+
+---
+
+## 2026-06-07 (1차) — 데이터 입력 UI 전면 개선
+
+**커밋**: `0699fb1` feat: 데이터 입력 UI 전면 개선
+
+| 파일 | 변경 내용 |
+|---|---|
+| `app/(tabs)/input.tsx` | 농장/작물별 그룹 카드, 수량 합산, 바텀시트 개별 선택, groupByFarmCrop 함수 |
+| `components/modals/InputFormModal.tsx` | SizeEntryModal, 사이즈별 단가 입력, 수확데이터 가져오기 import |
+
+---
+
+## 2026-06-02 (4차) — 버그 수정 (Google Sheets, 연락처, 기타)
+
+**커밋**: `d3fb1c7`, `4aa18ea`, `1089861`, `f566b67`
+
+| 파일 | 변경 내용 |
+|---|---|
+| `components/modals/ExportModal.tsx` | redirectUri → request!.redirectUri (Bad Request 수정) |
+| `components/pages/ContactsPage.tsx` | presentPicker fields 명시, Fields named export 수정, 앱 이름 변경 |
+| `supabase/migrations/supabase_migration_008.sql` | other_records.extra_cost 컬럼 추가 |
+| `components/modals/RecordDetailModal.tsx` | 기타 타입 부수비용 표시, 수확 삭제 시 labor_records 함께 삭제 |
+| `components/pages/FarmSettingsPage.tsx` | 주소 AddressField 인라인 전환(focus 유지) |
+| `hooks/useStats.ts` / `components/modals/BreakdownModal.tsx` | fetchBreakdown farmId 파라미터 추가 |
+| `app.json` | 앱 이름 변경 |
+
+---
+
 ## 2026-06-02 (3차) — UI 버그 수정 4건
 
 **커밋**: `614d1af` fix: 4가지 UI 버그 수정

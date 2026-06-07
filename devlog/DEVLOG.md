@@ -15,6 +15,185 @@
 
 ---
 
+## 2026-06-07 — 8차 작업 (판매 유형별 구분 저장 버그 수정)
+
+### upsertSales sale_type 누락 수정
+
+`upsertSales` 함수가 기존 레코드를 찾을 때 `sale_type`을 매칭 키에 포함하지 않아, 판매 유형이 달라도(지인판매 vs 오프라인판매) 같은 날짜·농장·품종·사이즈면 단일 레코드로 합쳐지던 버그 수정.
+
+매칭 키: `date + farm_id + crop_type + variety + size + sale_type`
+
+---
+
+## 2026-06-07 — 7차 작업 (판매 유형 필수 STEP + 판매 묶음 카드)
+
+### 판매 유형(sale_type) 필드 추가
+
+- `sales_records.sale_type` 컬럼 추가 (migration_009.sql)
+- 판매 입력 3번째 STEP: 온라인 / 오프라인 / 지인판매 / 기타(직접입력) 선택 필수
+- 저장 시 `sale_type` 컬럼에 기록
+
+### 판매 목록 묶음 카드 표시
+
+- `buyer + saleType` 기준 그룹화 → 묶음 단위 카드
+- 카드 내 항목별 품종·사이즈 / 수량 / 단가 / 소계 행
+- 카드 하단 합계 qty + 총매출 + 순수익 표시
+
+### 그룹 수정 pre-fill 완성
+
+- 수수료율·타입, 부수비용, 구매자, 판매유형 모두 수정폼에 복원
+- GROUP UPDATE 시 수수료·부수비용·구매자·sale_type 포함 저장
+
+---
+
+## 2026-06-07 — 6차 작업 (통계 미래 날짜 선택 차단)
+
+### CalendarModal maxDate
+
+- `CalendarModal`에 `maxDate` prop 추가
+- maxDate 이후 날짜 회색 처리 + 탭 비활성화
+- 다음달 버튼 maxDate 월 도달 시 비활성화
+- `statistics.tsx`: `›` 버튼 `range.to >= today` 이면 비활성화, CalendarModal에 `maxDate={today}` 전달
+
+---
+
+## 2026-06-07 — 5차 작업 (통계 날짜 네비게이터 + 품종·사이즈 도넛)
+
+### 날짜 네비게이터 최상단 이동
+
+- 날짜 네비게이터를 통계 탭 최상단으로 이동 → 모든 통계가 선택 날짜 기준으로 출력
+- 일별: 하루씩 `‹ 6월 4일 (목) ›`
+- 주별: 주차씩 `‹ 6월 1주차 ›`
+- 월별: 월씩 `‹ 2026년 6월 ›`
+- 연별: 년씩 `‹ 2026년 ›`
+- 날짜 라벨 탭 → CalendarModal로 직접 날짜 지정
+
+### 도넛 차트 '사이즈별' → '품종·사이즈별'
+
+- `byVarietySize`: 품종+사이즈 조합으로 집계
+- `useStats.fetchBreakdown`에 `byVarietySize` 추가
+
+### useStats 신규 함수
+
+- `fetchPeriodSummaryForRange`: 커스텀 날짜 범위 요약
+
+---
+
+## 2026-06-07 — 4차 작업 (통계 차트 개선 + 수정폼 개선)
+
+### 통계 도넛 차트
+
+- 전체너비 별도 카드로 분리 (크게)
+- 날짜 범위 독립 fetch (breakdownData 분리)
+- 범례에 kg + 비율(%) 표시
+
+### 통계 막대 차트
+
+- 오늘 기준 7개 기간으로 항상 표시 (`getBarChartRange`)
+- 전체너비 카드로 분리
+- 데이터 없는 날짜도 빈 막대 표시
+
+### 수정폼 개선
+
+- 수확/기타 수정폼에 수량 인라인 TextInput 적용
+- 항목 목록 정렬: 품종 asc → sizeOptions order asc
+
+---
+
+## 2026-06-07 — 3차 작업 (통계 차트 도넛/막대 분할 + 날짜 동기화)
+
+### 통계 차트 분할
+
+- 좌: 작물/품종/사이즈별 도넛 차트(PieChart), 탭 전환
+- 우: 수확량/매출 막대 차트(BarChart)
+- 데이터 없는 날짜도 빈 막대 표시 (`fillFullRange`)
+- 막대 최상단 수치 표기 (`topLabelComponent`)
+
+### InputFormModal 날짜 동기화 버그 수정
+
+- 신규 입력 시 `visible` 변경 시점에 `initialDate` 동기화
+- 다른 날짜에서 오늘로 이동 후 `+` 누르면 오늘 날짜로 설정
+
+---
+
+## 2026-06-07 — 2차 작업 (수확데이터 인라인 편집 + upsert + 그룹 수정)
+
+### 판매 수확데이터 항목 인라인 편집
+
+- 수확데이터 가져오기 항목: 수량 TextInput + 단가 TextInput 인라인 표시
+- 수량 pre-fill, 단가 직접 입력
+- `updateEntry(i, field, value)` 헬퍼 추가
+
+### 입력 저장 upsert 처리
+
+- `upsertHarvest` / `upsertSales` / `upsertOther` 헬퍼 분리
+- 동일 farm/crop/variety/size 레코드 존재 시 INSERT 대신 quantity 누적 UPDATE
+- N건 뱃지 제거
+
+### 그룹 전체 수정 폼
+
+- 카드 탭 → 해당 그룹 모든 항목이 pre-fill된 폼 오픈
+- 항목 수량/단가 수정 → UPDATE
+- 항목 ✕ → DB DELETE
+- 새 항목 추가 → upsert
+
+### 수확데이터 가져오기 날짜 버그 수정
+
+- `InputFormModal`에 `initialDate` prop 추가
+- 폼의 date가 today 고정이던 문제 → 입력 탭 선택 날짜 사용
+
+---
+
+## 2026-06-07 — 1차 작업 (데이터 입력 UI 전면 개선)
+
+### 입력 목록 그룹화
+
+- 농장/작물별 카드로 묶어 표시, 품종/사이즈 수량 합산
+- 판매 합산 매출액 표시
+- 복수 기록 탭 → 바텀시트로 개별 선택
+
+### 수확데이터 가져오기 (판매 입력)
+
+- 당일 수확 데이터를 판매 항목에 자동 import
+- 동일 품종+사이즈 합산 후 price 입력란 제공
+
+### 사이즈별 단가 개별 입력
+
+- 판매 입력 시 항목마다 개별 단가 지정 (공통 단가 스텝 제거)
+
+### SizeEntryModal 도입
+
+- 품종 선택 후 사이즈 탭 → 바텀시트로 수량/단가 입력
+- 직접 입력 시 사이즈명 TextInput 포함
+
+---
+
+## 2026-06-02 — 4차 작업 (버그 수정: Google Sheets, 연락처, 기타 4종)
+
+### Google Sheets Bad Request 수정
+
+`ExportModal.tsx`: `exchangeCodeAsync` 시 수동 조립한 redirectUri → `request!.redirectUri` (hook 실제 사용값) 로 교체
+
+### 연락처 이름 필드 누락 수정
+
+`Contact.presentPicker()`에 `fields` 옵션 명시:
+```ts
+{ fields: [Contact.Fields.Name, Contact.Fields.FirstName, Contact.Fields.LastName, Contact.Fields.PhoneNumbers] }
+```
+
+### expo-contacts Named Export 수정
+
+`Contact.Fields` → `Fields` (expo-contacts v56 별도 named export)
+
+### 앱 이름 변경 + 기타 4건 버그 수정
+
+- `other_records.extra_cost` 컬럼 추가 (migration_008.sql), 기타 타입도 부수비용 표시
+- 농장 주소 입력 focus 유지: AddressField 인라인 JSX 전환
+- 수확 삭제 시 동일 날짜 `labor_records` 함께 삭제
+- `fetchBreakdown`에 `farmId` 파라미터 추가 → 통계 상세 분석 농장 필터 적용
+
+---
+
 ## 2026-06-02 — 3차 작업 (UI 버그 수정 4건)
 
 ### 데이터 관리 탭 렌더링 깨짐 수정

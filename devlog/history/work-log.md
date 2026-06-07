@@ -4,6 +4,305 @@
 
 ---
 
+## 2026-06-07 (8차) — 커밋 미포함 (현재 작업)
+
+### upsertSales sale_type 구분 키 추가
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+```typescript
+// 변경 전: sale_type 없이 조회 → 판매 유형 달라도 같은 사이즈면 합쳐짐
+q = row.size ? q.eq('size', row.size) : q.is('size', null);
+
+// 변경 후: sale_type도 매칭 키에 포함
+q = row.size ? q.eq('size', row.size) : q.is('size', null);
+q = row.sale_type ? q.eq('sale_type', row.sale_type) : q.is('sale_type', null);
+```
+
+---
+
+## 2026-06-07 (7차) — 커밋 `fa5ffdd`
+
+### 1. DB migration_009 — sales_records.sale_type
+
+```sql
+ALTER TABLE sales_records ADD COLUMN IF NOT EXISTS sale_type TEXT;
+```
+
+### 2. 판매 유형 STEP
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+- STEP 3 (판매 탭 전용): 온라인 / 오프라인 / 지인판매 / 기타
+- 기타 선택 시 직접 입력 TextInput 표시
+- 저장 시 `sale_type: saleType` 포함
+
+### 3. 판매 목록 묶음 카드
+
+**파일**: `app/(tabs)/input.tsx`
+
+- `groupSalesRecords(records)`: `farmId::cropType::buyer::saleType` 키로 그룹화
+- `SaleGroup` 타입: `{ farmId, farmName, cropType, saleType, buyer, records, totalQty, totalRevenue, totalCommission, totalExtra }`
+- 묶음 카드 렌더: 헤더(농장뱃지, 판매유형뱃지, 작물, 구매자), 항목별 행, 합계행
+
+### 4. 그룹 수정 pre-fill
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+- `openGroupEdit(sg.records)` 호출 시 commissionRate, commissionType, extraCost, buyer, saleType 복원
+- GROUP UPDATE 시 해당 필드 모두 포함 저장
+
+---
+
+## 2026-06-07 (6차) — 커밋 `8b0c528`
+
+### CalendarModal maxDate
+
+**파일**: `components/modals/CalendarModal.tsx`
+
+- `maxDate?: string` prop 추가
+- `isDisabled = maxDate && day > maxDate` → 회색 텍스트 + `onPress` 비활성
+- `isNextDisabled = maxDate && nextMonth > maxDate의 월` → `›` 버튼 비활성
+
+**파일**: `app/(tabs)/statistics.tsx`
+
+- `today` 상수 선언, `›` 버튼에 `disabled={range.to >= today}` 조건 추가
+- `CalendarModal maxDate={today}` 전달
+
+---
+
+## 2026-06-07 (5차) — 커밋 `ba2c5f2`
+
+### 날짜 네비게이터 최상단
+
+**파일**: `app/(tabs)/statistics.tsx`
+
+- 날짜 표시 + `‹` / `›` 버튼을 탭 최상단으로 이동
+- 날짜 라벨 탭 → `CalendarModal` 오픈, 선택 날짜로 `range` 재계산
+- 기간별 라벨: 일(6월 4일 (목)), 주(6월 1주차), 월(2026년 6월), 연(2026년)
+
+### byVarietySize 도넛
+
+**파일**: `hooks/useStats.ts`
+
+- `fetchBreakdown` 반환: `byVarietySize` 필드 추가
+- `byVarietySize`: `variety + ' ' + size` 조합으로 집계
+
+**파일**: `app/(tabs)/statistics.tsx`
+
+- 도넛 탭: 작물별 / 품종별 / 사이즈별 → **품종·사이즈별** 로 교체
+
+### fetchPeriodSummaryForRange
+
+**파일**: `hooks/useStats.ts`
+
+- 커스텀 `from`, `to` 날짜 범위를 받아 요약 데이터 반환 (선택 날짜 기반 통계용)
+
+---
+
+## 2026-06-07 (4차) — 커밋 `b7174a4`
+
+### 도넛 차트 카드 분리
+
+**파일**: `app/(tabs)/statistics.tsx`
+
+- `breakdownData` fetch를 날짜 네비게이터와 독립적으로 분리
+- 별도 `donutFrom` / `donutTo` 상태, CalendarModal로 직접 날짜 범위 선택
+- 전체너비 카드, 범례에 kg + % 표시
+
+### 막대 차트 개선
+
+```typescript
+function getBarChartRange(period, today) {
+  // 오늘 기준 최근 7개 기간 범위 반환
+}
+```
+
+- 데이터 없는 날짜도 `{ label, value: 0 }` 으로 채워 빈 막대 표시
+
+### 수정폼 개선
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+- 수확/기타 탭 항목 수량 → TextInput 인라인 편집
+- `sortEntries(entries, sizeOptions)`: 품종 asc → sizeOptions order asc 정렬
+- 항목 추가, 수확데이터 import, 그룹 pre-fill 후 자동 정렬 적용
+
+---
+
+## 2026-06-07 (3차) — 커밋 `5372fc4`
+
+### 통계 차트 좌우 분할
+
+**파일**: `app/(tabs)/statistics.tsx`
+
+```
+좌 (PieChart): 작물별 / 품종별 / 품종·사이즈별 도넛 탭 전환
+우 (BarChart): 수확량 / 매출 막대 탭 전환
+```
+
+- `fillFullRange(grouped, period, from, to)`: 빈 기간 0으로 채움
+- 막대 `topLabelComponent`: 0이 아닐 때 수치 표기
+
+### InputFormModal 날짜 동기화
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+```typescript
+useEffect(() => {
+  if (visible && !editRecord) setDate(initialDate ?? today);
+}, [visible]);
+```
+
+---
+
+## 2026-06-07 (2차) — 커밋 `b923326`, `665c121`
+
+### 판매 수확데이터 인라인 편집
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+```typescript
+const updateEntry = (i: number, field: 'quantity' | 'price', value: string) =>
+  setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: value } : e));
+```
+
+판매 탭 항목 행: 수량 TextInput + 단가 TextInput 인라인 표시
+
+### upsert 헬퍼
+
+```typescript
+async function upsertHarvest(row) { /* date+farm+crop+variety+size 매칭 → qty 누적 */ }
+async function upsertSales(row)   { /* date+farm+crop+variety+size+sale_type 매칭 */ }
+async function upsertOther(row)   { /* date+farm+crop+variety+size+type 매칭 */ }
+```
+
+### 그룹 수정 폼
+
+**파일**: `app/(tabs)/input.tsx`, `components/modals/InputFormModal.tsx`
+
+- `openGroupEdit(records: DisplayRecord[])` → `setGroupEditRecords` → `InputFormModal` 오픈
+- `groupEditRecords`가 있으면 모든 항목 pre-fill, UPDATE/DELETE/INSERT 모두 지원
+
+### initialDate prop
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+- `initialDate?: string` prop 추가, 입력 탭 선택 날짜 전달 → 폼 date 초기화
+
+---
+
+## 2026-06-07 (1차) — 커밋 `0699fb1`
+
+### 입력 목록 그룹화
+
+**파일**: `app/(tabs)/input.tsx`
+
+```typescript
+type FarmCropGroup = { farmId, farmName, cropType, otherSubType, varieties, allRecords };
+type VarietyGroup  = { variety, sizes };
+type SizeRow       = { size, quantity, unit, revenue?, ids };
+
+function groupByFarmCrop(records, recordType): FarmCropGroup[]
+```
+
+- 수확/기타: FarmCropGroup 카드, 품종→사이즈 트리 표시, 수량 합산
+- 판매: totalRevenue 합산
+
+### SizeEntryModal
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+- 품종 선택 후 사이즈 칩 탭 → 바텀시트 오픈
+- 수량 / 단가(판매 탭만) 입력
+- 직접입력 사이즈: TextInput + 저장 버튼
+
+### 수확데이터 가져오기
+
+**파일**: `components/modals/InputFormModal.tsx`
+
+- "수확데이터 가져오기" 버튼: `harvest_records`에서 당일 수확 조회
+- 동일 품종+사이즈 합산 → entries에 자동 추가 (단가 빈칸)
+
+---
+
+## 2026-06-02 (4차) — 커밋 `d3fb1c7`, `4aa18ea`, `1089861`, `f566b67`
+
+### Google Sheets redirect_uri_mismatch 수정
+
+**파일**: `components/modals/ExportModal.tsx`
+
+```typescript
+// 변경 전 (수동 조립 → Google 400 Bad Request)
+const redirectUri = `com.googleusercontent.apps.${clientId.replace('...')}:/oauthredirect`;
+
+// 변경 후
+redirectUri: request!.redirectUri,  // hook이 실제로 사용한 URI 그대로 전달
+```
+
+### 연락처 이름 필드 누락 수정
+
+**파일**: `components/pages/ContactsPage.tsx`
+
+```typescript
+// 변경 전
+const contact = await Contact.presentPicker();
+
+// 변경 후
+const contact = await Contact.presentPicker({
+  fields: [Fields.Name, Fields.FirstName, Fields.LastName, Fields.PhoneNumbers],
+});
+```
+
+### Named Export 수정
+
+```typescript
+// 변경 전
+import * as Contact from 'expo-contacts';
+Contact.Fields.Name  // undefined
+
+// 변경 후
+import * as Contact from 'expo-contacts';
+import { Fields } from 'expo-contacts';
+Fields.Name  // 정상 동작
+```
+
+### other_records.extra_cost 컬럼 추가
+
+**파일**: `supabase/migrations/supabase_migration_008.sql`
+```sql
+ALTER TABLE other_records ADD COLUMN IF NOT EXISTS extra_cost NUMERIC(12,2);
+```
+
+- `input.tsx` select/mapping에 extra_cost 추가
+- `RecordDetailModal`: 기타 타입도 부수비용 행 표시
+
+### 농장 주소 focus 유지
+
+**파일**: `components/pages/FarmSettingsPage.tsx`
+
+- `AddressField` 내부 컴포넌트를 인라인 JSX로 전환
+  (렌더마다 unmount → 키보드 포커스 해제 현상 해결)
+
+### 수확 삭제 시 인건비 함께 삭제
+
+**파일**: `components/modals/RecordDetailModal.tsx`
+
+```typescript
+// harvest 삭제 후
+await supabase.from('labor_records')
+  .delete().eq('user_id', userId).eq('date', record.date);
+```
+
+### 통계 상세 분석 농장 필터
+
+**파일**: `hooks/useStats.ts`, `components/modals/BreakdownModal.tsx`
+
+- `fetchBreakdown(userId, from, to, farmId?)` — farmId 필터 추가
+- `BreakdownModal`에 `farmId` prop 추가, `statistics.tsx`에서 `selectedFarmId` 전달
+
+---
+
 ## 2026-06-02 (3차) — 커밋 `614d1af`
 
 ### Fix 1. AdminDataPage 탭 원형 렌더링 (ISSUE-012)

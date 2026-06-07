@@ -232,6 +232,25 @@ fetchPriceHistory(user.id, d30.toISOString().split('T')[0], today, selectedFarmI
 
 ---
 
+## ✅ ISSUE-015 — 판매 유형 달라도 같은 사이즈면 하나로 합쳐짐
+
+**증상**: 지인판매 1건 + 오프라인판매 1건을 동일 사이즈로 등록하면 단일 레코드로 합쳐져 1건으로 표시
+
+**원인**
+`upsertSales` 함수의 기존 레코드 조회 쿼리에 `sale_type` 조건이 없었음.
+매칭 키: `date + farm_id + crop_type + variety + size` → `sale_type`이 달라도 동일 레코드로 판정 후 수량 누적.
+
+**해결**
+`upsertSales` 쿼리에 `sale_type` 조건 추가:
+```typescript
+q = row.sale_type ? q.eq('sale_type', row.sale_type) : q.is('sale_type', null);
+```
+매칭 키: `date + farm_id + crop_type + variety + size + sale_type`
+
+**관련 파일**: `components/modals/InputFormModal.tsx`
+
+---
+
 ## 참고 — 알려진 제약 사항
 
 | 항목 | 내용 |
