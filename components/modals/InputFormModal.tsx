@@ -319,7 +319,7 @@ export function InputFormModal({
     setRecipient(''); setOtherExtraCost(''); setNote('');
   };
 
-  // 단일 레코드 수정 모드
+  // 단일 레코드 수정 모드 / create 모드 날짜 동기화
   useEffect(() => {
     if (!visible) { reset(); return; }
     if (isEdit && editRecord) {
@@ -337,8 +337,11 @@ export function InputFormModal({
       setBuyer(editRecord.buyer ?? '');
       setRecipient(editRecord.recipient ?? '');
       if (editRecord.farmId) setFarmId(editRecord.farmId);
+      return;
     }
-  }, [visible, editRecord]);
+    // 신규 입력 모드: 입력 화면에서 선택된 날짜로 동기화
+    if (!isGroupEdit) setDate(initialDate ?? today);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 그룹 수정 모드 - 기존 항목 전체 pre-fill
   useEffect(() => {
