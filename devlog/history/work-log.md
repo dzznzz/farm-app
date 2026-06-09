@@ -4,6 +4,105 @@
 
 ---
 
+## 2026-06-09 (10차) — 입력 UI 개선
+
+### 1. 통계 SummaryCard + 구성 비율 세로 레이아웃 (`statistics.tsx`)
+
+- 요약 섹션: `summaryGrid` 제거 → `summarySection` + `summaryRow` 두 행으로 구성
+- 각 카드: `SummaryCard` 컴포넌트 적용 (아이콘 🫐💰💵✨, flex:1, changeRate 표시)
+- 구성 비율(도넛) 레이아웃: `flexDirection:'row'` → 세로 정렬
+  - PieChart radius 100, innerRadius 60 (확대)
+  - 하단 `donutTable`: 헤더행(항목/수량/비율) + 데이터 행
+
+### 2. CalendarModal 선택 날짜 원형 fix (`CalendarModal.tsx`)
+
+- 문제: `width: '${100/7}%'` + `aspectRatio: 1` 셀에 `borderRadius: 999` → 타원
+- 해결: 셀 내부에 `dayCircle: { width: 34, height: 34, borderRadius: 17 }` 고정 View 삽입
+
+```tsx
+<View style={[styles.dayCircle, isSelected && styles.dayCircleSelected, ...]}>
+  <Text>{day}</Text>
+</View>
+```
+
+### 3. 할 일 탭 날짜 CalendarModal 연동 (`todo.tsx`)
+
+```tsx
+// 변경 전
+onPress={() => { setDate(today); load(today); }}
+
+// 변경 후
+onPress={() => setShowCalendar(true)}
+// + <CalendarModal> 렌더 추가
+```
+
+### 4. 데이터 입력 그룹 카드 개선 (`input.tsx`)
+
+#### 품종 소계 + 전체 합계
+```tsx
+// 사이즈 2개 이상: 품종 소계 행
+{vg.sizes.length > 1 && <View style={styles.varietySubtotalRow}>...소계...</View>}
+// 항목 2개 이상: 전체 합계 행
+{totalItems > 1 && <View style={styles.grandTotalRow}>...전체 합계...</View>}
+```
+
+#### 그룹 삭제 버튼
+- `deleteTarget` 상태 추가 → 삭제 확인 Modal
+- `Alert.alert` → RN `Modal` 커스텀 다이얼로그 (Expo Android Alert 미동작 이슈 우회)
+
+#### 수정/삭제 버튼 위치 이동
+- groupSubHeader(작물명 라인) → groupHeader(뱃지 라인) 오른쪽 정렬
+- `<View style={{ flex: 1 }} />` spacer로 버튼들을 오른쪽으로 밀기
+
+#### 중첩 TouchableOpacity 해결
+- 원인: 외부 `TouchableOpacity`(카드 전체 탭) 안에 내부 `TouchableOpacity`(삭제) 중첩 → 내부 미동작
+- 해결 과정: Pressable 교체 → 결국 외부 래퍼 제거, `Card`(plain View) 직접 사용
+  - "수정 ›" 텍스트를 별도 `TouchableOpacity`로 분리
+
+#### Android elevation + overflow 터치 차단 버그
+```tsx
+// 변경 전
+groupCard: { marginBottom: Spacing.md, padding: 0, overflow: 'hidden' }
+// 변경 후
+groupCard: { marginBottom: Spacing.md, padding: 0, elevation: 0 }
+```
+`elevation: 4` + `overflow: 'hidden'` 조합이 Android에서 자식 터치 차단하는 알려진 버그
+
+#### useLocalSearchParams 홈 탭 연동
+```tsx
+const params = useLocalSearchParams<{ tab?: string }>();
+useEffect(() => {
+  if (params.tab === 'harvest' || params.tab === 'sales' || params.tab === 'other') {
+    setTab(params.tab);
+  }
+}, [params.tab]);
+```
+홈 "수확 입력 / 판매 입력" 버튼 → 입력 탭 이동 + 해당 탭 자동 선택
+
+### 5. InputFormModal 개선 (`InputFormModal.tsx`)
+
+#### 내역 품종 그룹화 (`EntriesContent`)
+```typescript
+const varietyGroups = entries를 연속 같은 품종 기준으로 그룹화
+```
+- 품종 헤더 → 사이즈별 편집 행 → 품종 소계(사이즈 2개+) → 전체 합계(항목 2개+)
+
+#### 내역 입력 필드 스타일
+```typescript
+entryEditInput: {
+  backgroundColor: 'rgba(255,255,255,0.6)',  // 흰색 → 반투명 (라벤더 배경과 조화)
+  borderColor: Colors.primaryLight,           // 회색 → 라벤더 테두리
+}
+```
+
+#### 품종 칩+직접입력 방식
+- 상태 추가: `showVarietyInput`, `showEditVarietyInput`
+- 칩 목록 + "직접 입력" 칩 항상 표시
+- 칩 선택 → TextInput 숨김 / "직접 입력" 탭 → TextInput 표시
+- 편집 모드 초기화: varieties 로드 후 editVariety가 목록에 없으면 자동으로 직접입력 상태
+
+---
+
 ## 2026-06-07 (9차) — UI 개선
 
 ### 1. 도넛 차트 회전 애니메이션 (`statistics.tsx`)

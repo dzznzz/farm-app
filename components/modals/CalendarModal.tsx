@@ -212,23 +212,27 @@ export function CalendarModal({ visible, value, onSelect, onClose, maxDate, mode
                   style={[
                     styles.cell,
                     isInWeek && !isFuture && styles.cellInWeek,
-                    isSelected && styles.cellSelected,
-                    isToday && !isSelected && !isInWeek && styles.cellToday,
                   ]}
                   onPress={() => { if (!isFuture) { onSelect(dateStr); onClose(); } }}
                   disabled={isFuture}
                 >
-                  <Text style={[
-                    styles.dayText,
-                    isFuture && styles.dayFutureText,
-                    isSelected && styles.daySelectedText,
-                    isInWeek && !isFuture && !isSelected && styles.dayInWeekText,
-                    !isSelected && !isInWeek && !isFuture && isToday && { color: Colors.primary },
-                    !isSelected && !isInWeek && !isFuture && isSun && { color: Colors.danger },
-                    !isSelected && !isInWeek && !isFuture && isSat && { color: Colors.primary },
+                  <View style={[
+                    styles.dayCircle,
+                    isSelected && styles.dayCircleSelected,
+                    isToday && !isSelected && !isInWeek && styles.dayCircleToday,
                   ]}>
-                    {day}
-                  </Text>
+                    <Text style={[
+                      styles.dayText,
+                      isFuture && styles.dayFutureText,
+                      isSelected && styles.daySelectedText,
+                      isInWeek && !isFuture && !isSelected && styles.dayInWeekText,
+                      !isSelected && !isInWeek && !isFuture && isToday && { color: Colors.primary },
+                      !isSelected && !isInWeek && !isFuture && isSun && { color: Colors.danger },
+                      !isSelected && !isInWeek && !isFuture && isSat && { color: Colors.primary },
+                    ]}>
+                      {day}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -258,9 +262,10 @@ const styles = StyleSheet.create({
   weekDay: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: Colors.textSub },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  cellSelected: { backgroundColor: Colors.primary, borderRadius: Radius.full },
-  cellToday: { borderWidth: 1, borderColor: Colors.primary, borderRadius: Radius.full },
   cellInWeek: { backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.sm },
+  dayCircle: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  dayCircleSelected: { backgroundColor: Colors.primary },
+  dayCircleToday: { borderWidth: 1.5, borderColor: Colors.primary },
   dayText: { fontSize: 14, color: Colors.text },
   dayFutureText: { color: Colors.border },
   daySelectedText: { color: '#fff', fontWeight: '700' },

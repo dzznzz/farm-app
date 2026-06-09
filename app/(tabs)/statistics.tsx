@@ -15,6 +15,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
+import { SummaryCard } from '../../components/cards/SummaryCard';
 import { BreakdownModal } from '../../components/modals/BreakdownModal';
 import { ExportModal } from '../../components/modals/ExportModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
@@ -346,6 +347,10 @@ export default function StatisticsScreen() {
   const harvestRate = prev.harvest > 0 ? ((cur.harvest - prev.harvest) / prev.harvest) * 100 : null;
   const pyRevenueRate = py && py.revenue > 0 ? ((cur.revenue - py.revenue) / py.revenue) * 100 : null;
   const pyHarvestRate = py && py.harvest > 0 ? ((cur.harvest - py.harvest) / py.harvest) * 100 : null;
+  const salesRate = prev.sales > 0 ? ((cur.sales - prev.sales) / prev.sales) * 100 : null;
+  const netRevenueRate = prev.netRevenue > 0 ? ((cur.netRevenue - prev.netRevenue) / prev.netRevenue) * 100 : null;
+  const salesLabel = labels.harvest.replace('수확량', '판매량');
+  const netRevenueLabel = labels.revenue.replace('매출', '순수익');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -404,18 +409,35 @@ export default function StatisticsScreen() {
         {summaryLoading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginVertical: Spacing.lg }} />
         ) : (
-          <View style={styles.summaryGrid}>
-            {[
-              { label: '수확량', value: `${cur.harvest.toLocaleString()}kg`, color: Colors.primary },
-              { label: '판매량', value: `${cur.sales.toLocaleString()}kg`, color: Colors.primaryDark },
-              { label: '매출', value: `${(cur.revenue / 10000).toFixed(1)}만원`, color: Colors.success },
-              { label: '순수익', value: `${(cur.netRevenue / 10000).toFixed(1)}만원`, color: Colors.warning },
-            ].map((item) => (
-              <Card key={item.label} style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>{item.label}</Text>
-                <Text style={[styles.summaryValue, { color: item.color }]}>{item.value}</Text>
-              </Card>
-            ))}
+          <View style={styles.summarySection}>
+            <View style={styles.summaryRow}>
+              <SummaryCard
+                icon="🫐" title="수확량"
+                value={cur.harvest.toLocaleString()} unit="kg"
+                changeRate={harvestRate} compareLabel={labels.harvest}
+                color={Colors.primary}
+              />
+              <SummaryCard
+                icon="💰" title="판매량"
+                value={cur.sales.toLocaleString()} unit="kg"
+                changeRate={salesRate} compareLabel={salesLabel}
+                color={Colors.primaryDark}
+              />
+            </View>
+            <View style={styles.summaryRow}>
+              <SummaryCard
+                icon="💵" title="매출"
+                value={(cur.revenue / 10000).toFixed(1)} unit="만원"
+                changeRate={revenueRate} compareLabel={labels.revenue}
+                color={Colors.success}
+              />
+              <SummaryCard
+                icon="✨" title="순수익"
+                value={(cur.netRevenue / 10000).toFixed(1)} unit="만원"
+                changeRate={netRevenueRate} compareLabel={netRevenueLabel}
+                color={Colors.warning}
+              />
+            </View>
             {cur.laborCost > 0 && (
               <Card style={styles.laborCard}>
                 <Text style={styles.summaryLabel}>인건비 차감</Text>
@@ -444,33 +466,33 @@ export default function StatisticsScreen() {
           {pieData.length > 0 ? (
             <View style={styles.donutBody}>
               <Animated.View style={{ transform: [{ rotate: donutSpin }] }}>
-                <PieChart donut data={pieData} radius={80} innerRadius={48} showText={false}
+                <PieChart donut data={pieData} radius={100} innerRadius={60} showText={false}
                   centerLabelComponent={() => (
                     <View style={{ alignItems: 'center' }}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
-                      <Text style={{ fontSize: 9, color: Colors.textSub }}>kg</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
+                      <Text style={{ fontSize: 11, color: Colors.textSub }}>kg</Text>
                     </View>
                   )}
                 />
               </Animated.View>
-              <ScrollView
-                style={[styles.donutLegend, { maxHeight: 130 }]}
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled
-              >
+              <View style={styles.donutTable}>
+                <View style={styles.donutTableHeader}>
+                  <Text style={[styles.donutTableHeaderText, { flex: 1 }]}>항목</Text>
+                  <Text style={[styles.donutTableHeaderText, { width: 76, textAlign: 'right' }]}>수량</Text>
+                  <Text style={[styles.donutTableHeaderText, { width: 50, textAlign: 'right' }]}>비율</Text>
+                </View>
                 {pieData.map((item, i) => {
                   const pct = donutTotal > 0 ? ((item.value / donutTotal) * 100).toFixed(1) : '0';
                   return (
-                    <View key={i} style={styles.donutLegendRow}>
+                    <View key={i} style={styles.donutTableRow}>
                       <View style={[styles.donutDot, { backgroundColor: item.color }]} />
-                      <View style={styles.donutLegendText}>
-                        <Text style={styles.donutLegendLabel} numberOfLines={1}>{item.label}</Text>
-                        <Text style={styles.donutLegendSub}>{item.value.toLocaleString()}kg  {pct}%</Text>
-                      </View>
+                      <Text style={styles.donutTableLabel} numberOfLines={1}>{item.label}</Text>
+                      <Text style={styles.donutTableValue}>{item.value.toLocaleString()}kg</Text>
+                      <Text style={styles.donutTablePct}>{pct}%</Text>
                     </View>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           ) : (
             <View style={styles.emptyChart}>
@@ -660,9 +682,9 @@ const styles = StyleSheet.create({
   farmChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSub },
   farmChipTextActive: { color: Colors.primaryDark },
   scroll: { flex: 1 },
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.md, paddingTop: Spacing.md },
-  summaryCard: { width: '50%', alignItems: 'center', paddingVertical: Spacing.md },
-  laborCard: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm },
+  summarySection: { paddingTop: Spacing.md, gap: Spacing.sm },
+  summaryRow: { flexDirection: 'row', paddingHorizontal: Spacing.md, gap: Spacing.sm },
+  laborCard: { marginHorizontal: Spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm },
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
   chartCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: 0 },
@@ -678,13 +700,15 @@ const styles = StyleSheet.create({
   donutTabActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
   donutTabText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   donutTabTextActive: { color: Colors.primaryDark, fontWeight: '700' },
-  donutBody: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
-  donutLegend: { flex: 1 },
-  donutLegendRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 8 },
-  donutDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0, marginTop: 3 },
-  donutLegendText: { flex: 1 },
-  donutLegendLabel: { fontSize: 12, fontWeight: '700', color: Colors.text },
-  donutLegendSub: { fontSize: 11, color: Colors.textSub, marginTop: 1, textAlign: 'right' },
+  donutBody: { alignItems: 'center', gap: Spacing.md },
+  donutDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  donutTable: { width: '100%', borderRadius: Radius.md, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border },
+  donutTableHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: Colors.primaryUltraLight },
+  donutTableHeaderText: { fontSize: 12, fontWeight: '700', color: Colors.textSub },
+  donutTableRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderTopWidth: 1, borderTopColor: Colors.border },
+  donutTableLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: Colors.text },
+  donutTableValue: { width: 76, fontSize: 13, fontWeight: '700', color: Colors.primaryDark, textAlign: 'right' },
+  donutTablePct: { width: 50, fontSize: 12, color: Colors.textSub, textAlign: 'right', fontWeight: '600' },
   emptyChart: { alignItems: 'center', paddingVertical: 32 },
   emptyText: { ...Typography.body, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4, color: Colors.textLight },

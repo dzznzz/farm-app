@@ -15,6 +15,47 @@
 
 ---
 
+## 2026-06-09 — 10차 작업 (입력 UI 개선 — 삭제 기능, 그룹 카드, 품종 칩 입력)
+
+### 통계 탭 요약 카드 + 구성 비율 개선
+
+- `statistics.tsx` 요약 카드에 `SummaryCard` 컴포넌트 적용, 수확/판매/매출/순수익 2×2 레이아웃
+- 구성 비율(도넛) 레이아웃 변경: 가로(파이 좌+범례 우) → 세로(파이 위+테이블 아래)
+- 파이 차트 반지름 확대(radius 100), 하단 품종·사이즈 / 수량 / 비율 테이블 표시
+
+### 캘린더 선택 날짜 원형 fix
+
+- `CalendarModal.tsx`: `aspectRatio: 1` 퍼센트 너비 셀에 `borderRadius: 999`를 직접 적용하면 타원형이 되는 문제
+- 34×34 고정 크기 `dayCircle` View로 래핑 → 완벽한 원형 표시
+
+### 할 일 탭 날짜 → CalendarModal 연동
+
+- `todo.tsx`: 날짜 라벨 탭 → `setDate(today)` 대신 `CalendarModal` 오픈
+
+### 데이터 입력 그룹 카드 개선
+
+- 수확/기타 카드: 품종별 소계(사이즈 2개 이상 시) + 전체 합계(항목 2개 이상 시) 표시
+- 판매 카드: 동일 개선 적용
+- 삭제 버튼(🗑) 추가 — 그룹 단위 삭제
+- 수정/삭제 버튼을 뱃지 라인(groupHeader) 오른쪽으로 이동
+- 홈 "수확 입력 / 판매 입력" 버튼 → `useLocalSearchParams`로 해당 탭 자동 전환
+
+### 삭제 버튼 터치 이슈 해결
+
+- `Alert.alert` 미동작(Expo Android 환경) → RN `Modal` 기반 커스텀 확인 다이얼로그로 교체
+- 중첩 `TouchableOpacity` 이슈: 외부 래퍼를 `Card`(plain View)로 교체, 수정/삭제 각각 독립 `TouchableOpacity`
+- `groupCard` 스타일: `overflow: 'hidden'` 제거 + `elevation: 0` (Android elevation + overflow 터치 차단 버그 회피)
+
+### InputFormModal 개선
+
+- 내역(항목 목록) 품종별 그룹 + 소계 + 합계 표시 (`EntriesContent` 재구성)
+- 내역 입력 필드 배경색: `Colors.surface`(흰색) → `rgba(255,255,255,0.6)` + 라벤더 테두리 (`Colors.primaryLight`)
+- 품종 입력: TextInput 항상 표시 → 칩 선택 + "직접 입력" 칩 방식으로 변경 (사이즈와 동일 UX)
+  - 칩 선택 시 TextInput 숨김, "직접 입력" 탭 시 TextInput 표시
+  - 기존 레코드 편집 시 품종이 칩 목록에 없으면 자동으로 직접 입력 상태
+
+---
+
 ## 2026-06-07 — 9차 작업 (UI 개선 — 차트 애니메이션, 캘린더 기간별 모드)
 
 ### 도넛 차트 회전 애니메이션

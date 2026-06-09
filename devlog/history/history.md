@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-06-09 (10차) — 입력 UI 개선 (삭제 기능, 그룹 카드, 품종 칩 입력)
+
+| 파일 | 변경 내용 |
+|---|---|
+| `app/(tabs)/statistics.tsx` | SummaryCard 적용(2×2 레이아웃), 구성비율 세로 레이아웃(파이+테이블) |
+| `components/modals/CalendarModal.tsx` | 선택 날짜 원형 fix (34×34 고정 dayCircle View) |
+| `app/(tabs)/todo.tsx` | 날짜 탭 → CalendarModal 오픈 |
+| `app/(tabs)/input.tsx` | 품종 소계/전체 합계, 그룹 삭제(🗑), 수정/삭제 뱃지 라인 이동, useLocalSearchParams 탭 자동 전환, Alert→Modal 교체, elevation:0 |
+| `components/modals/InputFormModal.tsx` | 내역 품종 그룹화+소계+합계, 입력 필드 라벤더 스타일, 품종 칩+직접입력 방식 |
+
+---
+
 ## 2026-06-07 (9차) — UI 개선 (차트 애니메이션, 캘린더 기간별 모드, 레이아웃 수정)
 
 | 파일 | 변경 내용 |

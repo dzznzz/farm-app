@@ -13,6 +13,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
 import { Toast, useToast } from '../../components/ui/Toast';
 import { TimePickerModal } from '../../components/modals/TimePickerModal';
+import { CalendarModal } from '../../components/modals/CalendarModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 Notifications.setNotificationHandler({
@@ -96,6 +97,7 @@ export default function TodoScreen() {
   const [editAlarm, setEditAlarm] = useState(false);
   const [showEditTimePicker, setShowEditTimePicker] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
+  const [showCalendar, setShowCalendar] = useState(false);
   const [showAlarmTooltip, setShowAlarmTooltip] = useState(false);
   const [showEditAlarmTooltip, setShowEditAlarmTooltip] = useState(false);
 
@@ -229,7 +231,7 @@ export default function TodoScreen() {
           <TouchableOpacity style={styles.navBtn} onPress={() => handleDateChange(-1)}>
             <Text style={styles.navArrow}>‹</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { setDate(today); load(today); }} style={styles.dateLabel}>
+          <TouchableOpacity onPress={() => setShowCalendar(true)} style={styles.dateLabel}>
             <Text style={styles.dateText}>{formatDisplayDate(date)}</Text>
             {date === today && <Text style={styles.todayBadge}>오늘</Text>}
           </TouchableOpacity>
@@ -415,6 +417,12 @@ export default function TodoScreen() {
         value={editTime}
         onSelect={setEditTime}
         onClose={() => setShowEditTimePicker(false)}
+      />
+      <CalendarModal
+        visible={showCalendar}
+        value={date}
+        onSelect={(d) => { setDate(d); load(d); setShowCalendar(false); }}
+        onClose={() => setShowCalendar(false)}
       />
       <Toast message={toastMessage} visible={toastVisible} />
     </SafeAreaView>

@@ -281,6 +281,7 @@ export function InputFormModal({
   const [entries, setEntries] = useState<Entry[]>([]);
   const [originalEntryIds, setOriginalEntryIds] = useState<string[]>([]); // 그룹 수정 시 원본 ID 추적
   const [newVariety, setNewVariety] = useState('');
+  const [showVarietyInput, setShowVarietyInput] = useState(false);
   const [showSizeInfo, setShowSizeInfo] = useState(false);
   const [sizeModalVisible, setSizeModalVisible] = useState(false);
   const [sizeModalTarget, setSizeModalTarget] = useState('');
@@ -288,6 +289,7 @@ export function InputFormModal({
 
   // Edit mode fields
   const [editVariety, setEditVariety] = useState('');
+  const [showEditVarietyInput, setShowEditVarietyInput] = useState(false);
   const [editSize, setEditSize] = useState('');
   const [editCustomSizeMode, setEditCustomSizeMode] = useState(false);
   const [editShowSizeInfo, setEditShowSizeInfo] = useState(false);
@@ -329,9 +331,9 @@ export function InputFormModal({
     setFarmId(pFarm?.id ?? '');
     setCropType(pFarm?.crop_type ?? '블루베리');
     setOtherType('gift'); setEntries([]); setOriginalEntryIds([]);
-    setNewVariety(''); setShowSizeInfo(false);
+    setNewVariety(''); setShowVarietyInput(false); setShowSizeInfo(false);
     setSizeModalVisible(false); setSizeModalTarget(''); setEntryError('');
-    setEditVariety(''); setEditSize(''); setEditCustomSizeMode(false);
+    setEditVariety(''); setShowEditVarietyInput(false); setEditSize(''); setEditCustomSizeMode(false);
     setEditShowSizeInfo(false); setEditQty(''); setEditUnit('kg');
     setWorkers([]); setWName(''); setWHours(''); setWCost(''); setWorkerError('');
     setPricePerUnit(''); setCommissionRate(''); setCommissionType('%'); setExtraCost(''); setBuyer('');
@@ -427,7 +429,11 @@ export function InputFormModal({
   useEffect(() => {
     if (!cropType) return;
     supabase.from('varieties_master').select('name').eq('crop_type', cropType).order('sort_order')
-      .then(({ data }) => { setVarieties(data?.length ? data.map((v: any) => v.name) : []); });
+      .then(({ data }) => {
+        const list = data?.length ? data.map((v: any) => v.name) : [];
+        setVarieties(list);
+        if (editVariety && !list.includes(editVariety)) setShowEditVarietyInput(true);
+      });
     supabase.from('sizes_master').select('name, range_info').eq('crop_type', cropType).order('sort_order')
       .then(({ data }) => {
         const opts = data?.length ? data.map((s: any) => s.name) : BLUEBERRY_SIZES;
@@ -692,72 +698,99 @@ export function InputFormModal({
   const allStepsDone = activeStep >= totalSteps;
   const currentStepDisplay = Math.min(activeStep + 1, totalSteps);
 
-  const EntriesContent = () => (
+  const EntriesContent = () => {
+    const varietyGroups: { variety: string; indices: number[] }[] = [];
+    entries.forEach((e, i) => {
+      const last = varietyGroups[varietyGroups.length - 1];
+      if (last && last.variety === e.variety) {
+        last.indices.push(i);
+      } else {
+        varietyGroups.push({ variety: e.variety, indices: [i] });
+      }
+    });
+    const grandTotal = entries.reduce((s, e) => s + (parseFloat(e.quantity) || 0), 0);
+    const grandTotalUnit = entries[0]?.unit ?? 'kg';
+    return (
     <>
       {entries.length > 0 && (
         <View style={styles.entryList}>
-          {entries.map((e, i) => (
-            <View key={i}
-              style={[styles.entryBlock, i < entries.length - 1 && styles.entryBlockBorder]}>
-              {/* 헤더: 품종·사이즈 + 삭제 */}
-              <View style={styles.entryBlockHeader}>
-                <Text style={styles.entryMain}>{e.variety} · {e.size}</Text>
-                <TouchableOpacity onPress={() => removeEntry(i)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Text style={styles.entryRemove}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              {tab === 'sales' ? (
-                /* 판매: 수량 + 단가 세로 편집 */
-                <View style={{ gap: 6 }}>
-                  <View>
-                    <Text style={styles.entryEditLabel}>수량</Text>
-                    <View style={styles.entryEditInline}>
-                      <TextInput
-                        style={styles.entryEditInput}
-                        value={e.quantity}
-                        onChangeText={(v) => updateEntry(i, 'quantity', v)}
-                        keyboardType="decimal-pad"
-                        placeholder="0"
-                        placeholderTextColor={Colors.textLight}
-                      />
-                      <Text style={styles.entryEditUnit}>{e.unit}</Text>
+          {varietyGroups.map((vg, vgi) => {
+            const varietyTotal = vg.indices.reduce((s, i) => s + (parseFloat(entries[i].quantity) || 0), 0);
+            const vUnit = entries[vg.indices[0]]?.unit ?? 'kg';
+            return (
+              <View key={vg.variety + vgi} style={[styles.entryVarietyGroup, vgi > 0 && styles.entryVarietyGroupSep]}>
+                <Text style={styles.entryVarietyHeader}>{vg.variety}</Text>
+                {vg.indices.map((i) => {
+                  const e = entries[i];
+                  return (
+                    <View key={i} style={styles.entrySizeBlock}>
+                      <View style={styles.entrySizeRow}>
+                        <Text style={styles.entrySizeLabel}>{e.size || '—'}</Text>
+                        <TouchableOpacity onPress={() => removeEntry(i)}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                          <Text style={styles.entryRemove}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {tab === 'sales' ? (
+                        <View style={{ gap: 4, marginTop: 4 }}>
+                          <View style={styles.entryEditInline}>
+                            <TextInput
+                              style={styles.entryEditInput}
+                              value={e.quantity}
+                              onChangeText={(v) => updateEntry(i, 'quantity', v)}
+                              keyboardType="decimal-pad"
+                              placeholder="0"
+                              placeholderTextColor={Colors.textLight}
+                            />
+                            <Text style={styles.entryEditUnit}>{e.unit}</Text>
+                          </View>
+                          <View style={styles.entryEditInline}>
+                            <TextInput
+                              style={[styles.entryEditInput]}
+                              value={e.price ?? ''}
+                              onChangeText={(v) => updateEntry(i, 'price', v)}
+                              keyboardType="decimal-pad"
+                              placeholder="단가 (원)"
+                              placeholderTextColor={Colors.textLight}
+                            />
+                            <Text style={styles.entryEditUnit}>원</Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={[styles.entryEditInline, { marginTop: 4 }]}>
+                          <TextInput
+                            style={styles.entryEditInput}
+                            value={e.quantity}
+                            onChangeText={(v) => updateEntry(i, 'quantity', v)}
+                            keyboardType="decimal-pad"
+                            placeholder="0"
+                            placeholderTextColor={Colors.textLight}
+                          />
+                          <Text style={styles.entryEditUnit}>{e.unit}</Text>
+                        </View>
+                      )}
                     </View>
+                  );
+                })}
+                {vg.indices.length > 1 && (
+                  <View style={styles.entrySubtotalRow}>
+                    <Text style={styles.entrySubtotalLabel}>{vg.variety} 소계</Text>
+                    <Text style={styles.entrySubtotalValue}>
+                      {Number.isInteger(varietyTotal) ? varietyTotal : parseFloat(varietyTotal.toFixed(2))}{vUnit}
+                    </Text>
                   </View>
-                  <View>
-                    <Text style={styles.entryEditLabel}>단가 (원)</Text>
-                    <TextInput
-                      style={[styles.entryEditInput, { flex: 0 }]}
-                      value={e.price ?? ''}
-                      onChangeText={(v) => updateEntry(i, 'price', v)}
-                      keyboardType="decimal-pad"
-                      placeholder="0"
-                      placeholderTextColor={Colors.textLight}
-                    />
-                  </View>
-                </View>
-              ) : (
-              /* 수확/기타: 수량 인라인 편집 */
-              <View style={styles.entryEditRow}>
-                <View style={styles.entryEditGroup}>
-                  <Text style={styles.entryEditLabel}>수량</Text>
-                  <View style={styles.entryEditInline}>
-                    <TextInput
-                      style={styles.entryEditInput}
-                      value={e.quantity}
-                      onChangeText={(v) => updateEntry(i, 'quantity', v)}
-                      keyboardType="decimal-pad"
-                      placeholder="0"
-                      placeholderTextColor={Colors.textLight}
-                    />
-                    <Text style={styles.entryEditUnit}>{e.unit}</Text>
-                  </View>
-                </View>
+                )}
               </View>
-            )}
+            );
+          })}
+          {entries.length > 1 && (
+            <View style={styles.entryGrandTotalRow}>
+              <Text style={styles.entryGrandTotalLabel}>전체 합계</Text>
+              <Text style={styles.entryGrandTotalValue}>
+                {Number.isInteger(grandTotal) ? grandTotal : parseFloat(grandTotal.toFixed(2))}{grandTotalUnit}
+              </Text>
             </View>
-          ))}
+          )}
         </View>
       )}
 
@@ -775,19 +808,24 @@ export function InputFormModal({
 
       <View style={styles.entryForm}>
         <Text style={styles.formLabel}>품종</Text>
-        {varieties.length > 0 && (
-          <View style={styles.chipRow}>
-            {varieties.map((v) => (
-              <TouchableOpacity key={v}
-                style={[styles.chip, newVariety === v && styles.chipActive]}
-                onPress={() => setNewVariety(v)}>
-                <Text style={[styles.chipText, newVariety === v && styles.chipTextActive]}>{v}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <View style={styles.chipRow}>
+          {varieties.map((v) => (
+            <TouchableOpacity key={v}
+              style={[styles.chip, newVariety === v && !showVarietyInput && styles.chipActive]}
+              onPress={() => { setNewVariety(v); setShowVarietyInput(false); }}>
+              <Text style={[styles.chipText, newVariety === v && !showVarietyInput && styles.chipTextActive]}>{v}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            style={[styles.chip, styles.sizeChipAction, showVarietyInput && styles.chipActive]}
+            onPress={() => { setShowVarietyInput(true); setNewVariety(''); }}>
+            <Text style={[styles.chipText, showVarietyInput && styles.chipTextActive]}>직접 입력</Text>
+          </TouchableOpacity>
+        </View>
+        {(showVarietyInput || varieties.length === 0) && (
+          <TextInput style={[styles.input, { marginTop: 6 }]} value={newVariety} onChangeText={setNewVariety}
+            placeholder="품종 직접 입력" placeholderTextColor={Colors.textLight} autoFocus />
         )}
-        <TextInput style={[styles.input, { marginTop: 6 }]} value={newVariety} onChangeText={setNewVariety}
-          placeholder="품종 선택 또는 직접 입력" placeholderTextColor={Colors.textLight} />
 
         {newVariety.trim() !== '' && (
           <>
@@ -829,7 +867,8 @@ export function InputFormModal({
         {!!entryError && <Text style={styles.errorText}>{entryError}</Text>}
       </View>
     </>
-  );
+    );
+  };
 
   const WorkersSection = () => (
     <View style={styles.optionalSection}>
@@ -940,20 +979,25 @@ export function InputFormModal({
                 </SectionCard>
               )}
               <SectionCard label="품종">
-                {varieties.length > 0 && (
-                  <View style={styles.chipRow}>
-                    {varieties.map((v) => (
-                      <TouchableOpacity key={v}
-                        style={[styles.chip, editVariety === v && styles.chipActive]}
-                        onPress={() => setEditVariety(v)}>
-                        <Text style={[styles.chipText, editVariety === v && styles.chipTextActive]}>{v}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                <View style={styles.chipRow}>
+                  {varieties.map((v) => (
+                    <TouchableOpacity key={v}
+                      style={[styles.chip, editVariety === v && !showEditVarietyInput && styles.chipActive]}
+                      onPress={() => { setEditVariety(v); setShowEditVarietyInput(false); }}>
+                      <Text style={[styles.chipText, editVariety === v && !showEditVarietyInput && styles.chipTextActive]}>{v}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[styles.chip, styles.sizeChipAction, showEditVarietyInput && styles.chipActive]}
+                    onPress={() => { setShowEditVarietyInput(true); setEditVariety(''); }}>
+                    <Text style={[styles.chipText, showEditVarietyInput && styles.chipTextActive]}>직접 입력</Text>
+                  </TouchableOpacity>
+                </View>
+                {(showEditVarietyInput || varieties.length === 0) && (
+                  <TextInput style={[styles.input, { marginTop: 6 }]}
+                    value={editVariety} onChangeText={setEditVariety}
+                    placeholder="품종 직접 입력" placeholderTextColor={Colors.textLight} />
                 )}
-                <TextInput style={[styles.input, { marginTop: varieties.length > 0 ? 6 : 0 }]}
-                  value={editVariety} onChangeText={setEditVariety}
-                  placeholder="품종 선택 또는 직접 입력" placeholderTextColor={Colors.textLight} />
               </SectionCard>
               <SectionCard label="">
                 <View style={styles.labelRow}>
@@ -1322,6 +1366,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 8,
   },
+  entryVarietyGroup: { marginBottom: 4 },
+  entryVarietyGroupSep: { borderTopWidth: 1, borderTopColor: Colors.primaryLight, marginTop: 4, paddingTop: 6 },
+  entryVarietyHeader: { fontSize: 12, fontWeight: '800', color: Colors.primaryDark, marginBottom: 2, paddingHorizontal: 2 },
+  entrySizeBlock: { paddingVertical: 5, paddingHorizontal: 2 },
+  entrySizeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  entrySizeLabel: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  entrySubtotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, paddingHorizontal: 4, paddingVertical: 5, backgroundColor: Colors.surface, borderRadius: Radius.sm },
+  entrySubtotalLabel: { fontSize: 11, fontWeight: '700', color: Colors.primaryDark },
+  entrySubtotalValue: { fontSize: 13, fontWeight: '800', color: Colors.primaryDark },
+  entryGrandTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, paddingHorizontal: 4, paddingVertical: 8, backgroundColor: Colors.primary, borderRadius: Radius.sm },
+  entryGrandTotalLabel: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  entryGrandTotalValue: { fontSize: 14, fontWeight: '800', color: '#fff' },
   entryBlock: { paddingVertical: 10 },
   entryBlockBorder: { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight },
   entryBlockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
@@ -1330,9 +1386,9 @@ const styles = StyleSheet.create({
   entryEditLabel: { fontSize: 11, fontWeight: '600', color: Colors.textSub, marginBottom: 3 },
   entryEditInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   entryEditInput: {
-    flex: 1, backgroundColor: Colors.surface, borderRadius: Radius.sm,
+    flex: 1, backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: Radius.sm,
     paddingHorizontal: 8, paddingVertical: 6, fontSize: 14, color: Colors.text,
-    borderWidth: 1, borderColor: Colors.border,
+    borderWidth: 1, borderColor: Colors.primaryLight,
   },
   entryEditUnit: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
   entryMain: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },

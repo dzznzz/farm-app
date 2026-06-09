@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
   ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
@@ -117,9 +117,16 @@ function groupByFarmCrop(records: DisplayRecord[], recordType: TabType): FarmCro
 
 export default function InputScreen() {
   const { user } = useAuth();
+  const params = useLocalSearchParams<{ tab?: string }>();
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
   const [tab, setTab] = useState<TabType>('harvest');
+
+  useEffect(() => {
+    if (params.tab === 'harvest' || params.tab === 'sales' || params.tab === 'other') {
+      setTab(params.tab);
+    }
+  }, [params.tab]);
   const [records, setRecords] = useState<DisplayRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string; is_primary: boolean }[]>([]);
@@ -128,6 +135,7 @@ export default function InputScreen() {
   const [selectedRecord, setSelectedRecord] = useState<DisplayRecord | null>(null);
   const [editRecord, setEditRecord] = useState<DisplayRecord | undefined>(undefined);
   const [groupEditRecords, setGroupEditRecords] = useState<DisplayRecord[] | undefined>(undefined);
+  const [deleteTarget, setDeleteTarget] = useState<DisplayRecord[] | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -201,6 +209,20 @@ export default function InputScreen() {
     setShowForm(true);
   };
 
+  const handleDeleteGroup = (records: DisplayRecord[]) => {
+    setDeleteTarget(records);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const type = deleteTarget[0]?.type;
+    const table = type === 'harvest' ? 'harvest_records'
+      : type === 'sales' ? 'sales_records' : 'other_records';
+    await supabase.from(table).delete().in('id', deleteTarget.map(r => r.id));
+    setDeleteTarget(null);
+    loadRecords(date);
+  };
+
   const otherTypeLabel = (subType?: string) =>
     subType === 'gift' ? '나눔' : subType === 'waste' ? '폐기' : '';
 
@@ -257,8 +279,7 @@ export default function InputScreen() {
             saleGroups.map((sg, gi) => {
               const netRev = sg.totalRevenue - sg.totalCommission - sg.totalExtra;
               return (
-                <TouchableOpacity key={gi} onPress={() => openGroupEdit(sg.records)} activeOpacity={0.75}>
-                  <Card style={styles.groupCard}>
+                <Card key={gi} style={styles.groupCard}>
                     {/* 헤더 */}
                     <View style={styles.groupHeader}>
                       {sg.farmName && (
@@ -271,9 +292,20 @@ export default function InputScreen() {
                           <Text style={styles.saleTypeBadgeText}>{sg.saleType}</Text>
                         </View>
                       )}
+                      <View style={{ flex: 1 }} />
+                      <TouchableOpacity onPress={() => openGroupEdit(sg.records)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.editHint}>수정 ›</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteGroup(sg.records)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.deleteGroupBtn}>🗑</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.groupSubHeader}>
                       <Text style={styles.groupCrop}>{sg.cropType || '(작물 미입력)'}</Text>
                       {sg.buyer && <Text style={styles.buyerText}>{sg.buyer}</Text>}
-                      <Text style={styles.editHint}>수정 ›</Text>
                     </View>
 
                     <View style={styles.divider} />
@@ -303,55 +335,88 @@ export default function InputScreen() {
                         )}
                       </View>
                     </View>
-                  </Card>
-                </TouchableOpacity>
+                </Card>
               );
             })
           ) : (
             /* ── 수확/기타: 농장+작물 그룹 카드 ── */
-            grouped.map((group, gi) => (
-              <TouchableOpacity
-                key={`${group.farmId}-${group.cropType}-${group.otherSubType ?? ''}-${gi}`}
-                onPress={() => openGroupEdit(group.allRecords)}
-                activeOpacity={0.75}
-              >
-                <Card style={styles.groupCard}>
-                  <View style={styles.groupHeader}>
-                    {group.farmName && (
-                      <View style={styles.farmBadge}>
-                        <Text style={styles.farmBadgeText}>{group.farmName}</Text>
-                      </View>
-                    )}
-                    {tab === 'other' && group.otherSubType && (
-                      <View style={[styles.typeBadge, { backgroundColor: otherTypeColor(group.otherSubType) + '22' }]}>
-                        <Text style={[styles.typeBadgeText, { color: otherTypeColor(group.otherSubType) }]}>
-                          {otherTypeLabel(group.otherSubType)}
+            grouped.map((group, gi) => {
+              const grandTotal = group.varieties.reduce((sum, vg) => sum + vg.sizes.reduce((s2, sr) => s2 + sr.quantity, 0), 0);
+              const grandTotalUnit = group.varieties[0]?.sizes[0]?.unit ?? 'kg';
+              const totalItems = group.varieties.reduce((sum, vg) => sum + vg.sizes.length, 0);
+              return (
+                <Card
+                  key={`${group.farmId}-${group.cropType}-${group.otherSubType ?? ''}-${gi}`}
+                  style={styles.groupCard}
+                >
+                    <View style={styles.groupHeader}>
+                      {group.farmName && (
+                        <View style={styles.farmBadge}>
+                          <Text style={styles.farmBadgeText}>{group.farmName}</Text>
+                        </View>
+                      )}
+                      {tab === 'other' && group.otherSubType && (
+                        <View style={[styles.typeBadge, { backgroundColor: otherTypeColor(group.otherSubType) + '22' }]}>
+                          <Text style={[styles.typeBadgeText, { color: otherTypeColor(group.otherSubType) }]}>
+                            {otherTypeLabel(group.otherSubType)}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }} />
+                      <TouchableOpacity onPress={() => openGroupEdit(group.allRecords)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.editHint}>수정 ›</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteGroup(group.allRecords)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.deleteGroupBtn}>🗑</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.groupSubHeader}>
+                      <Text style={styles.groupCrop}>{group.cropType || '(작물 미입력)'}</Text>
+                    </View>
+
+                    <View style={styles.divider} />
+
+                    {group.varieties.map((vg, vi) => {
+                      const varietyTotal = vg.sizes.reduce((sum, sr) => sum + sr.quantity, 0);
+                      const varietyUnit = vg.sizes[0]?.unit ?? 'kg';
+                      return (
+                        <View key={`${vg.variety}-${vi}`}
+                          style={[styles.varietyBlock, vi > 0 && styles.varietyBlockSep]}>
+                          {vg.variety !== '' && <Text style={styles.varietyLabel}>{vg.variety}</Text>}
+                          {vg.sizes.map((sr) => (
+                            <View key={sr.size} style={styles.sizeRow}>
+                              <Text style={styles.sizeLabel}>{sr.size || '—'}</Text>
+                              <Text style={styles.sizeQty}>
+                                {Number.isInteger(sr.quantity) ? sr.quantity : parseFloat(sr.quantity.toFixed(2))}{sr.unit}
+                              </Text>
+                            </View>
+                          ))}
+                          {vg.sizes.length > 1 && (
+                            <View style={styles.varietySubtotalRow}>
+                              <Text style={styles.varietySubtotalLabel}>{vg.variety || ''} 소계</Text>
+                              <Text style={styles.varietySubtotalValue}>
+                                {Number.isInteger(varietyTotal) ? varietyTotal : parseFloat(varietyTotal.toFixed(2))}{varietyUnit}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+
+                    {totalItems > 1 && (
+                      <View style={styles.grandTotalRow}>
+                        <Text style={styles.grandTotalLabel}>전체 합계</Text>
+                        <Text style={styles.grandTotalValue}>
+                          {Number.isInteger(grandTotal) ? grandTotal : parseFloat(grandTotal.toFixed(2))}{grandTotalUnit}
                         </Text>
                       </View>
                     )}
-                    <Text style={styles.groupCrop}>{group.cropType || '(작물 미입력)'}</Text>
-                    <Text style={styles.editHint}>수정 ›</Text>
-                  </View>
-
-                  <View style={styles.divider} />
-
-                  {group.varieties.map((vg, vi) => (
-                    <View key={`${vg.variety}-${vi}`}
-                      style={[styles.varietyBlock, vi > 0 && styles.varietyBlockSep]}>
-                      {vg.variety !== '' && <Text style={styles.varietyLabel}>{vg.variety}</Text>}
-                      {vg.sizes.map((sr) => (
-                        <View key={sr.size} style={styles.sizeRow}>
-                          <Text style={styles.sizeLabel}>{sr.size || '—'}</Text>
-                          <Text style={styles.sizeQty}>
-                            {Number.isInteger(sr.quantity) ? sr.quantity : parseFloat(sr.quantity.toFixed(2))}{sr.unit}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ))}
                 </Card>
-              </TouchableOpacity>
-            ))
+              );
+            })
           )}
         </ScrollView>
       )}
@@ -397,6 +462,25 @@ export default function InputScreen() {
         onSelect={(d) => { setDate(d); loadRecords(d); setShowCalendar(false); }}
         onClose={() => setShowCalendar(false)}
       />
+
+      <Modal visible={deleteTarget !== null} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteDialog}>
+            <Text style={styles.deleteDialogTitle}>삭제 확인</Text>
+            <Text style={styles.deleteDialogMsg}>
+              {deleteTarget?.length ?? 0}개 항목을 삭제합니다.{'\n'}복구할 수 없습니다.
+            </Text>
+            <View style={styles.deleteDialogBtns}>
+              <TouchableOpacity style={styles.deleteCancelBtn} onPress={() => setDeleteTarget(null)}>
+                <Text style={styles.deleteCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteConfirmBtn} onPress={confirmDelete}>
+                <Text style={styles.deleteConfirmText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -431,10 +515,14 @@ const styles = StyleSheet.create({
   emptyText: { ...Typography.body, color: Colors.textSub, textAlign: 'center' },
   emptySubText: { ...Typography.caption, marginTop: 6, color: Colors.textLight },
   // Group card
-  groupCard: { marginBottom: Spacing.md, padding: 0, overflow: 'hidden' },
+  groupCard: { marginBottom: Spacing.md, padding: 0, elevation: 0 },
   groupHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     padding: Spacing.md, paddingBottom: Spacing.sm,
+  },
+  groupSubHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    padding: Spacing.md, paddingBottom: Spacing.sm, paddingTop: Spacing.sm,
   },
   farmBadge: {
     backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.full,
@@ -446,8 +534,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full,
   },
   typeBadgeText: { fontSize: 11, fontWeight: '700' },
-  groupCrop: { fontSize: 16, fontWeight: '800', color: Colors.text, flex: 1 },
+  groupCrop: { fontSize: 16, fontWeight: '800', color: Colors.text },
   editHint: { fontSize: 12, color: Colors.textLight },
+  deleteGroupBtn: { fontSize: 16 },
   divider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.md },
   varietyBlock: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: 4 },
   varietyBlockSep: { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 2 },
@@ -488,6 +577,21 @@ const styles = StyleSheet.create({
   saleTotalRev: { fontSize: 14, fontWeight: '800', color: Colors.success },
   saleNetRev: { fontSize: 11, color: Colors.textSub, marginTop: 1 },
   sizeQty: { fontSize: 17, fontWeight: '800', color: Colors.primaryDark, minWidth: 60, textAlign: 'right' },
+  varietySubtotalRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 7, paddingHorizontal: 4, marginTop: 4,
+    backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.sm,
+  },
+  varietySubtotalLabel: { fontSize: 12, fontWeight: '700', color: Colors.primaryDark },
+  varietySubtotalValue: { fontSize: 14, fontWeight: '800', color: Colors.primaryDark },
+  grandTotalRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    backgroundColor: Colors.primary,
+    borderTopWidth: 1, borderTopColor: Colors.primaryDark,
+  },
+  grandTotalLabel: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  grandTotalValue: { fontSize: 16, fontWeight: '800', color: '#fff' },
   // FAB
   fab: {
     position: 'absolute',
@@ -500,4 +604,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 6, elevation: 8,
   },
   fabText: { color: '#fff', fontSize: 30, fontWeight: '300', lineHeight: 34 },
+  deleteOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  deleteDialog: {
+    backgroundColor: Colors.surface, borderRadius: Radius.xl,
+    padding: Spacing.xl, width: 300,
+  },
+  deleteDialogTitle: { fontSize: 17, fontWeight: '700', color: Colors.text, marginBottom: Spacing.sm },
+  deleteDialogMsg: { fontSize: 14, color: Colors.textSub, lineHeight: 22, marginBottom: Spacing.lg },
+  deleteDialogBtns: { flexDirection: 'row', gap: 10 },
+  deleteCancelBtn: {
+    flex: 1, backgroundColor: Colors.primaryUltraLight,
+    borderRadius: Radius.md, paddingVertical: 12, alignItems: 'center',
+  },
+  deleteCancelText: { fontSize: 15, fontWeight: '600', color: Colors.primaryDark },
+  deleteConfirmBtn: {
+    flex: 1, backgroundColor: Colors.danger,
+    borderRadius: Radius.md, paddingVertical: 12, alignItems: 'center',
+  },
+  deleteConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
