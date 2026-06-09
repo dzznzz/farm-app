@@ -193,7 +193,7 @@ function formatHarvest(v: number): string {
   return `${v.toLocaleString()}kg`;
 }
 
-const EMPTY_SUMMARY: PeriodSummary = { harvest: 0, sales: 0, revenue: 0, netRevenue: 0, stock: 0, laborCost: 0 };
+const EMPTY_SUMMARY: PeriodSummary = { harvest: 0, sales: 0, revenue: 0, netRevenue: 0, stock: 0, laborCost: 0, commissionTotal: 0, extraCostTotal: 0 };
 
 export default function StatisticsScreen() {
   const { user } = useAuth();
@@ -438,14 +438,43 @@ export default function StatisticsScreen() {
                 color={Colors.warning}
               />
             </View>
-            {cur.laborCost > 0 && (
-              <Card style={styles.laborCard}>
-                <Text style={styles.summaryLabel}>인건비 차감</Text>
-                <Text style={[styles.summaryValue, { color: Colors.danger }]}>
-                  −{(cur.laborCost / 10000).toFixed(1)}만원
-                </Text>
-              </Card>
-            )}
+            {(cur.commissionTotal > 0 || cur.extraCostTotal > 0 || cur.laborCost > 0) && (() => {
+              const total = cur.commissionTotal + cur.extraCostTotal + cur.laborCost;
+              return (
+                <Card style={styles.laborCard}>
+                  <View style={styles.deductionHeader}>
+                    <Text style={styles.deductionTitle}>차감 내역</Text>
+                    <Text style={[styles.deductionValue, { color: Colors.danger }]}>
+                      −{formatRevenue(total)}
+                    </Text>
+                  </View>
+                  {cur.commissionTotal > 0 && (
+                    <View style={styles.deductionRow}>
+                      <Text style={styles.deductionLabel}>수수료</Text>
+                      <Text style={[styles.deductionValue, { color: Colors.textSub }]}>
+                        −{formatRevenue(cur.commissionTotal)}
+                      </Text>
+                    </View>
+                  )}
+                  {cur.extraCostTotal > 0 && (
+                    <View style={styles.deductionRow}>
+                      <Text style={styles.deductionLabel}>부수비용</Text>
+                      <Text style={[styles.deductionValue, { color: Colors.textSub }]}>
+                        −{formatRevenue(cur.extraCostTotal)}
+                      </Text>
+                    </View>
+                  )}
+                  {cur.laborCost > 0 && (
+                    <View style={styles.deductionRow}>
+                      <Text style={styles.deductionLabel}>인건비</Text>
+                      <Text style={[styles.deductionValue, { color: Colors.textSub }]}>
+                        −{formatRevenue(cur.laborCost)}
+                      </Text>
+                    </View>
+                  )}
+                </Card>
+              );
+            })()}
           </View>
         )}
 
@@ -684,9 +713,14 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   summarySection: { paddingTop: Spacing.md, gap: Spacing.sm },
   summaryRow: { flexDirection: 'row', paddingHorizontal: Spacing.md, gap: Spacing.sm },
-  laborCard: { marginHorizontal: Spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm },
+  laborCard: { marginHorizontal: Spacing.md, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm },
   summaryLabel: { ...Typography.caption, marginBottom: 4 },
   summaryValue: { fontSize: 14, fontWeight: '800' },
+  deductionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  deductionTitle: { ...Typography.bodyBold },
+  deductionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
+  deductionLabel: { ...Typography.caption, color: Colors.textSub },
+  deductionValue: { fontSize: 13, fontWeight: '700' },
   chartCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: 0 },
   chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   chartTypeTabs: { flexDirection: 'row', gap: 4 },

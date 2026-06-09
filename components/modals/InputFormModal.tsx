@@ -40,6 +40,8 @@ const DEFAULT_UNITS = ['kg', '박스'];
 
 const SALE_TYPE_OPTIONS = ['온라인', '오프라인', '지인판매', '기타'];
 
+const MINIMUM_HOURLY_WAGE = 10320; // 2026년 최저시급 (원/h)
+
 function getStepIds(tab: TabType): string[] {
   if (tab === 'harvest') return ['date', 'farm', 'crop', 'entries'];
   if (tab === 'sales')   return ['date', 'farm', 'saleType', 'crop', 'entries'];
@@ -301,8 +303,11 @@ export function InputFormModal({
   const [workers, setWorkers] = useState<WorkerEntry[]>([]);
   const [wName, setWName] = useState('');
   const [wHours, setWHours] = useState('');
-  const [wCost, setWCost] = useState('');
+  const [wCost, setWCost] = useState(String(MINIMUM_HOURLY_WAGE));
   const [workerError, setWorkerError] = useState('');
+  const [savedLaborRecords, setSavedLaborRecords] = useState<
+    { id: string; worker_name: string; work_hours: number | null; labor_cost: number }[]
+  >([]);
 
   // Sales / Other
   const [pricePerUnit, setPricePerUnit] = useState('');
@@ -336,7 +341,8 @@ export function InputFormModal({
     setSizeModalVisible(false); setSizeModalTarget(''); setEntryError('');
     setEditVariety(''); setShowEditVarietyInput(false); setEditSize(''); setEditCustomSizeMode(false);
     setEditShowSizeInfo(false); setEditQty(''); setEditUnit('kg');
-    setWorkers([]); setWName(''); setWHours(''); setWCost(''); setWorkerError('');
+    setWorkers([]); setWName(''); setWHours(''); setWCost(String(MINIMUM_HOURLY_WAGE)); setWorkerError('');
+    setSavedLaborRecords([]);
     setPricePerUnit(''); setCommissionRate(''); setCommissionType('%'); setExtraCost(''); setBuyer('');
     setRecipient(''); setOtherExtraCost(''); setNote('');
     setSaleType(''); setCustomSaleType('');
@@ -428,6 +434,18 @@ export function InputFormModal({
   }, [visible]);
 
   useEffect(() => {
+    if (!visible || !userId || !date || tab !== 'harvest') { setSavedLaborRecords([]); return; }
+    supabase.from('labor_records')
+      .select('id, worker_name, work_hours, labor_cost')
+      .eq('user_id', userId)
+      .eq('date', date)
+      .then(({ data, error }) => {
+        if (error) console.error('[labor_records fetch error]', error);
+        setSavedLaborRecords(data ?? []);
+      });
+  }, [visible, userId, date, tab]);
+
+  useEffect(() => {
     if (!cropType) return;
     supabase.from('varieties_master').select('name').eq('crop_type', cropType).order('sort_order')
       .then(({ data }) => {
@@ -469,10 +487,16 @@ export function InputFormModal({
     if (!wCost.trim() || isNaN(parseFloat(wCost))) { setWorkerError('인건비를 입력해주세요.'); return; }
     setWorkerError('');
     setWorkers((prev) => [...prev, { name: wName.trim(), hours: wHours.trim(), cost: wCost.trim() }]);
-    setWName(''); setWHours(''); setWCost('');
+    setWName(''); setWHours(''); setWCost(String(MINIMUM_HOURLY_WAGE));
   };
 
   const removeWorker = (i: number) => setWorkers((prev) => prev.filter((_, idx) => idx !== i));
+
+  const deleteSavedWorker = async (id: string) => {
+    const { error } = await supabase.from('labor_records').delete().eq('id', id);
+    if (error) { Alert.alert('삭제 실패', error.message); return; }
+    setSavedLaborRecords((prev) => prev.filter((r) => r.id !== id));
+  };
 
   // ── 수확데이터 가져오기 ──
   const loadFromHarvest = async () => {
@@ -638,6 +662,31 @@ export function InputFormModal({
             }
           }
         }
+        if (tab === 'harvest') {
+          const pendingWorkers = [...workers];
+          if (wName.trim() && wCost.trim() && !isNaN(parseFloat(wCost))) {
+            pendingWorkers.push({ name: wName.trim(), hours: wHours.trim(), cost: wCost.trim() });
+          }
+          if (pendingWorkers.length > 0) {
+            const laborRows = pendingWorkers.map((w) => {
+              const hours = parseFloat(w.hours) || 0;
+              const rate = parseFloat(w.cost) || 0;
+              return {
+                user_id: userId, farm_id: farmId || null, date,
+                worker_name: w.name,
+                work_hours: hours > 0 ? hours : null,
+                labor_cost: hours > 0 ? hours * rate : rate,
+              };
+            });
+            const { data: insertedLabor, error: laborError } = await supabase
+              .from('labor_records').insert(laborRows).select('id, worker_name, work_hours, labor_cost');
+            if (laborError) {
+              console.error('[labor_records insert error]', laborError);
+              throw new Error(`인건비 저장 실패: ${laborError.message}`);
+            }
+            setSavedLaborRecords((prev) => [...prev, ...(insertedLabor ?? [])]);
+          }
+        }
 
       // ── 신규 입력 (upsert) ──
       } else {
@@ -648,14 +697,28 @@ export function InputFormModal({
               quantity: parseFloat(e.quantity), unit: e.unit, note: note || null,
             });
           }
-          if (workers.length > 0) {
-            const laborRows = workers.map((w) => ({
-              user_id: userId, date,
-              worker_name: w.name,
-              work_hours: w.hours ? parseFloat(w.hours) : null,
-              labor_cost: parseFloat(w.cost) || 0,
-            }));
-            await supabase.from('labor_records').insert(laborRows).throwOnError();
+          const pendingWorkers = [...workers];
+          if (wName.trim() && wCost.trim() && !isNaN(parseFloat(wCost))) {
+            pendingWorkers.push({ name: wName.trim(), hours: wHours.trim(), cost: wCost.trim() });
+          }
+          if (pendingWorkers.length > 0) {
+            const laborRows = pendingWorkers.map((w) => {
+              const hours = parseFloat(w.hours) || 0;
+              const rate = parseFloat(w.cost) || 0;
+              return {
+                user_id: userId, farm_id: farmId || null, date,
+                worker_name: w.name,
+                work_hours: hours > 0 ? hours : null,
+                labor_cost: hours > 0 ? hours * rate : rate,
+              };
+            });
+            const { data: insertedLabor, error: laborError } = await supabase
+              .from('labor_records').insert(laborRows).select('id, worker_name, work_hours, labor_cost');
+            if (laborError) {
+              console.error('[labor_records insert error]', laborError);
+              throw new Error(`인건비 저장 실패: ${laborError.message}`);
+            }
+            setSavedLaborRecords((prev) => [...prev, ...(insertedLabor ?? [])]);
           }
         } else if (tab === 'sales') {
           const cInput = parseFloat(commissionRate || '0') || 0;
@@ -874,13 +937,34 @@ export function InputFormModal({
   const WorkersSection = () => (
     <View style={styles.optionalSection}>
       <Text style={styles.optionalTitle}>작업자 정보 (선택)</Text>
+      {savedLaborRecords.length > 0 && (
+        <View style={{ marginBottom: 8 }}>
+          <Text style={[styles.formLabel, { color: Colors.textSub, marginBottom: 4 }]}>저장된 인건비</Text>
+          {savedLaborRecords.map((r) => (
+            <View key={r.id} style={[styles.entryRow, { borderWidth: 1, borderColor: Colors.primaryLight, marginBottom: 4 }]}>
+              <Text style={[styles.entryMain, { color: Colors.primary, flex: 1 }]}>
+                ✓ {r.worker_name}
+                {r.work_hours
+                  ? ` · ${r.work_hours}h · ${Number(r.labor_cost).toLocaleString()}원`
+                  : ` · ${Number(r.labor_cost).toLocaleString()}원`}
+              </Text>
+              <TouchableOpacity onPress={() => deleteSavedWorker(r.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.entryRemove}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
       {workers.length > 0 && (
         <View style={styles.entryList}>
           {workers.map((w, i) => (
             <View key={i}
               style={[styles.entryRow, i < workers.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.primaryLight }]}>
               <Text style={styles.entryMain}>
-                {w.name}{w.hours ? ` · ${w.hours}h` : ''} · {Number(w.cost).toLocaleString()}원
+                {w.name}{w.hours
+                  ? ` · ${w.hours}h × ${Number(w.cost).toLocaleString()}원 = ${(parseFloat(w.hours) * parseFloat(w.cost)).toLocaleString()}원`
+                  : ` · ${Number(w.cost).toLocaleString()}원`}
               </Text>
               <TouchableOpacity onPress={() => removeWorker(i)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -903,9 +987,14 @@ export function InputFormModal({
               placeholder="시간" placeholderTextColor={Colors.textLight} keyboardType="decimal-pad" />
           </View>
         </View>
-        <Text style={[styles.formLabel, { marginTop: 6 }]}>인건비 (원)</Text>
+        <Text style={[styles.formLabel, { marginTop: 6 }]}>시급 (원/h)</Text>
         <TextInput style={styles.input} value={wCost} onChangeText={setWCost}
-          placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="decimal-pad" />
+          placeholder={String(MINIMUM_HOURLY_WAGE)} placeholderTextColor={Colors.textLight} keyboardType="decimal-pad" />
+        {!!wHours && !!wCost && !isNaN(parseFloat(wCost)) && parseFloat(wHours) > 0 && (
+          <Text style={[styles.formLabel, { color: Colors.primary, marginTop: 4 }]}>
+            {`= ${(parseFloat(wHours) * parseFloat(wCost)).toLocaleString()}원 (${wHours}h × ${Number(wCost).toLocaleString()}원)`}
+          </Text>
+        )}
         {!!workerError && <Text style={styles.errorText}>{workerError}</Text>}
         <TouchableOpacity style={styles.addEntryBtn} onPress={addWorker}>
           <Text style={styles.addEntryBtnText}>+ 작업자 추가</Text>
@@ -1365,7 +1454,7 @@ const styles = StyleSheet.create({
   },
   entryRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 8, paddingHorizontal: 4,
   },
   entryVarietyGroup: { marginBottom: 4 },
   entryVarietyGroupSep: { borderTopWidth: 1, borderTopColor: Colors.primaryLight, marginTop: 4, paddingTop: 6 },
