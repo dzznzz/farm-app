@@ -136,6 +136,7 @@ export default function InputScreen() {
   const [editRecord, setEditRecord] = useState<DisplayRecord | undefined>(undefined);
   const [groupEditRecords, setGroupEditRecords] = useState<DisplayRecord[] | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<DisplayRecord[] | null>(null);
+  const [expandedVarieties, setExpandedVarieties] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -213,6 +214,14 @@ export default function InputScreen() {
     setDeleteTarget(records);
   };
 
+  const toggleVariety = (key: string) => {
+    setExpandedVarieties(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const type = deleteTarget[0]?.type;
@@ -278,6 +287,16 @@ export default function InputScreen() {
             /* ── 판매: 묶음 단위 카드 ── */
             saleGroups.map((sg, gi) => {
               const netRev = sg.totalRevenue - sg.totalCommission - sg.totalExtra;
+              // 품종별 그룹
+              const varietyGroups: { variety: string; records: DisplayRecord[]; totalQty: number; totalRevenue: number }[] = [];
+              for (const r of sg.records) {
+                const v = r.variety ?? '';
+                let vg = varietyGroups.find(x => x.variety === v);
+                if (!vg) { vg = { variety: v, records: [], totalQty: 0, totalRevenue: 0 }; varietyGroups.push(vg); }
+                vg.records.push(r);
+                vg.totalQty += r.quantity;
+                vg.totalRevenue += (r.totalRevenue ?? 0);
+              }
               return (
                 <Card key={gi} style={styles.groupCard}>
                     {/* 헤더 */}
@@ -310,19 +329,37 @@ export default function InputScreen() {
 
                     <View style={styles.divider} />
 
-                    {/* 개별 항목 */}
-                    {sg.records.map((r) => (
-                      <View key={r.id} style={styles.saleItemRow}>
-                        <Text style={styles.saleItemLabel} numberOfLines={1}>
-                          {[r.variety, r.size].filter(Boolean).join(' · ') || '—'}
-                        </Text>
-                        <Text style={styles.saleItemQty}>{r.quantity}kg</Text>
-                        {r.pricePerUnit != null && (
-                          <Text style={styles.saleItemPrice}>@{r.pricePerUnit.toLocaleString()}</Text>
-                        )}
-                        <Text style={styles.saleItemRev}>{(r.totalRevenue ?? 0).toLocaleString()}원</Text>
-                      </View>
-                    ))}
+                    {/* 품종별 행 */}
+                    {varietyGroups.map((vg, vi) => {
+                      const vKey = `${gi}-${vg.variety}`;
+                      const isOpen = expandedVarieties.has(vKey);
+                      return (
+                        <View key={vKey}>
+                          <TouchableOpacity
+                            style={[styles.saleVarietyRow, vi > 0 && styles.saleVarietyRowSep]}
+                            onPress={() => toggleVariety(vKey)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.saleVarietyLabel}>{vg.variety || '—'}</Text>
+                            <Text style={styles.saleVarietyQty}>{vg.totalQty}kg</Text>
+                            <Text style={styles.saleVarietyRev}>{vg.totalRevenue.toLocaleString()}원</Text>
+                            <Text style={styles.saleVarietyArrow}>{isOpen ? '▲' : '▼'}</Text>
+                          </TouchableOpacity>
+                          {isOpen && vg.records.map((r) => (
+                            <View key={r.id} style={styles.saleItemRow}>
+                              <Text style={styles.saleItemLabel} numberOfLines={1}>
+                                {r.size || '—'}
+                              </Text>
+                              <Text style={styles.saleItemQty}>{r.quantity}kg</Text>
+                              {r.pricePerUnit != null && (
+                                <Text style={styles.saleItemPrice}>@{r.pricePerUnit.toLocaleString()}</Text>
+                              )}
+                              <Text style={styles.saleItemRev}>{(r.totalRevenue ?? 0).toLocaleString()}원</Text>
+                            </View>
+                          ))}
+                        </View>
+                      );
+                    })}
 
                     <View style={styles.saleTotalRow}>
                       <Text style={styles.saleTotalLabel}>
@@ -330,6 +367,9 @@ export default function InputScreen() {
                       </Text>
                       <View style={{ alignItems: 'flex-end' }}>
                         <Text style={styles.saleTotalRev}>{sg.totalRevenue.toLocaleString()}원</Text>
+                        {sg.totalCommission > 0 && (
+                          <Text style={styles.saleCommissionText}>수수료 {sg.totalCommission.toLocaleString()}원</Text>
+                        )}
                         {(sg.totalCommission > 0 || sg.totalExtra > 0) && (
                           <Text style={styles.saleNetRev}>순 {netRev.toLocaleString()}원</Text>
                         )}
@@ -574,8 +614,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryUltraLight, borderTopWidth: 1, borderTopColor: Colors.primaryLight,
   },
   saleTotalLabel: { fontSize: 13, fontWeight: '700', color: Colors.primaryDark },
-  saleTotalRev: { fontSize: 14, fontWeight: '800', color: Colors.success },
-  saleNetRev: { fontSize: 11, color: Colors.textSub, marginTop: 1 },
+  saleTotalRev: { fontSize: 14, color: Colors.success },
+  saleCommissionText: { fontSize: 11, color: Colors.textSub, marginTop: 1 },
+  saleNetRev: { fontSize: 13, fontWeight: '800', color: Colors.primaryDark, marginTop: 2 },
+  saleVarietyRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: Spacing.md,
+  },
+  saleVarietyRowSep: { borderTopWidth: 1, borderTopColor: Colors.border },
+  saleVarietyLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.text },
+  saleVarietyQty: { fontSize: 13, color: Colors.textSub, marginRight: 6 },
+  saleVarietyRev: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark, minWidth: 70, textAlign: 'right' },
+  saleVarietyArrow: { fontSize: 10, color: Colors.textLight, marginLeft: 8 },
   sizeQty: { fontSize: 17, fontWeight: '800', color: Colors.primaryDark, minWidth: 60, textAlign: 'right' },
   varietySubtotalRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

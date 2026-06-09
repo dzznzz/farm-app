@@ -214,6 +214,7 @@ async function upsertSales(row: any) {
   q = row.variety ? q.eq('variety', row.variety) : q.is('variety', null);
   q = row.size ? q.eq('size', row.size) : q.is('size', null);
   q = row.sale_type ? q.eq('sale_type', row.sale_type) : q.is('sale_type', null);
+  q = row.price_per_unit != null ? q.eq('price_per_unit', row.price_per_unit) : q.is('price_per_unit', null);
   const { data: existing } = await (q as any).maybeSingle();
   if (existing) {
     const newQty = existing.quantity + row.quantity;
