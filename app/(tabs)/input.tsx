@@ -67,7 +67,7 @@ function groupSalesRecords(records: DisplayRecord[]): SaleGroup[] {
 }
 
 // ── Grouping types & logic ──
-type SizeRow = { size: string; quantity: number; unit: string; revenue?: number; ids: string[] };
+type SizeRow = { size: string; quantity: number; unit: string; revenue?: number; extraCost?: number; ids: string[] };
 type VarietyGroup = { variety: string; sizes: SizeRow[] };
 type FarmCropGroup = {
   farmId: string | null;
@@ -110,6 +110,7 @@ function groupByFarmCrop(records: DisplayRecord[], recordType: TabType): FarmCro
     }
     sr.quantity += r.quantity;
     if (r.type === 'sales' && r.totalRevenue) sr.revenue = (sr.revenue ?? 0) + r.totalRevenue;
+    if (r.type === 'other' && r.extraCost) sr.extraCost = (sr.extraCost ?? 0) + r.extraCost;
     sr.ids.push(r.id);
   }
   return groups;
@@ -147,17 +148,26 @@ export default function InputScreen() {
   const loadRecords = useCallback(async (d: string) => {
     if (!user) return;
     setLoading(true);
-    const [hRes, sRes, oRes] = await Promise.all([
+    const [hRes, sRes, oRes, hnRes, onRes] = await Promise.all([
       supabase.from('harvest_records')
-        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, note, created_at')
+        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
       supabase.from('sales_records')
         .select('id, date, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, sale_type, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
       supabase.from('other_records')
-        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, type, recipient, extra_cost, note, created_at')
+        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, type, recipient, extra_cost, created_at')
         .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
+      supabase.from('harvest_notes')
+        .select('farm_id, crop_type, note')
+        .eq('user_id', user.id).eq('date', d),
+      supabase.from('other_notes')
+        .select('farm_id, crop_type, note')
+        .eq('user_id', user.id).eq('date', d),
     ]);
+
+    const getNote = (data: any[], farmId: string | null, cropType: string | null) =>
+      data.find(n => (n.farm_id ?? null) === farmId && (n.crop_type ?? null) === cropType)?.note ?? null;
 
     const getFarmName = (farmId: string | null) =>
       farms.find(f => f.id === farmId)?.name ?? null;
@@ -167,7 +177,8 @@ export default function InputScreen() {
         id: r.id, type: 'harvest', date: r.date,
         farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
-        quantity: r.quantity, unit: r.unit, note: r.note,
+        quantity: r.quantity, unit: r.unit,
+        note: getNote(hnRes.data ?? [], r.farm_id ?? null, r.crop_type ?? null),
       })),
       ...(sRes.data ?? []).map((r: any): DisplayRecord => ({
         id: r.id, type: 'sales', date: r.date,
@@ -182,7 +193,8 @@ export default function InputScreen() {
         id: r.id, type: 'other', date: r.date,
         farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
-        quantity: r.quantity, unit: r.unit, note: r.note,
+        quantity: r.quantity, unit: r.unit,
+        note: getNote(onRes.data ?? [], r.farm_id ?? null, r.crop_type ?? null),
         otherSubType: r.type, recipient: r.recipient,
         extraCost: r.extra_cost,
       })),
@@ -434,7 +446,7 @@ export default function InputScreen() {
                               </Text>
                             </View>
                           ))}
-                          {vg.sizes.length > 1 && (
+                          {(vg.sizes.length > 1 || tab === 'other') && (
                             <View style={styles.varietySubtotalRow}>
                               <Text style={styles.varietySubtotalLabel}>{vg.variety || ''} 소계</Text>
                               <Text style={styles.varietySubtotalValue}>
@@ -442,11 +454,23 @@ export default function InputScreen() {
                               </Text>
                             </View>
                           )}
+                          {tab === 'other' && (() => {
+                            const varietyExtraCost = vg.sizes.reduce((s, sr) => s + (sr.extraCost ?? 0), 0);
+                            if (varietyExtraCost <= 0) return null;
+                            return (
+                              <View style={[styles.varietySubtotalRow, { backgroundColor: Colors.warningLight, marginTop: 2 }]}>
+                                <Text style={[styles.varietySubtotalLabel, { color: Colors.warning }]}>부수비용</Text>
+                                <Text style={[styles.varietySubtotalValue, { color: Colors.warning }]}>
+                                  {varietyExtraCost.toLocaleString()}원
+                                </Text>
+                              </View>
+                            );
+                          })()}
                         </View>
                       );
                     })}
 
-                    {totalItems > 1 && (
+                    {(totalItems > 1 || tab === 'other') && (
                       <View style={styles.grandTotalRow}>
                         <Text style={styles.grandTotalLabel}>전체 합계</Text>
                         <Text style={styles.grandTotalValue}>
@@ -454,6 +478,16 @@ export default function InputScreen() {
                         </Text>
                       </View>
                     )}
+                    {tab === 'other' && (() => {
+                      const totalExtraCost = group.allRecords.reduce((s, r) => s + (r.extraCost ?? 0), 0);
+                      if (totalExtraCost <= 0) return null;
+                      return (
+                        <View style={[styles.grandTotalRow, { backgroundColor: Colors.warning }]}>
+                          <Text style={styles.grandTotalLabel}>부수비용 합계</Text>
+                          <Text style={styles.grandTotalValue}>{totalExtraCost.toLocaleString()}원</Text>
+                        </View>
+                      );
+                    })()}
                 </Card>
               );
             })

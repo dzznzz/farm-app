@@ -232,6 +232,24 @@ async function upsertSales(row: any) {
   }
 }
 
+async function saveNote(
+  table: 'harvest_notes' | 'other_notes',
+  { userId, date, farmId, cropType, note }: {
+    userId: string; date: string; farmId: string | null; cropType: string | null; note: string;
+  }
+) {
+  let q: any = supabase.from(table).delete()
+    .eq('user_id', userId).eq('date', date);
+  q = farmId ? q.eq('farm_id', farmId) : q.is('farm_id', null);
+  q = cropType ? q.eq('crop_type', cropType) : q.is('crop_type', null);
+  await q;
+  if (note.trim()) {
+    await supabase.from(table).insert({
+      user_id: userId, date, farm_id: farmId, crop_type: cropType, note: note.trim(),
+    }).throwOnError();
+  }
+}
+
 async function upsertOther(row: any) {
   let q = supabase.from('other_records').select('id, quantity')
     .eq('user_id', row.user_id).eq('date', row.date).eq('type', row.type);
@@ -380,6 +398,7 @@ export function InputFormModal({
     if (first.farmId) setFarmId(first.farmId);
     setCropType(first.cropType ?? '');
     if (tab === 'other') setOtherType((first.otherSubType as OtherType) ?? 'gift');
+    if (tab === 'harvest' || tab === 'other') setNote(first.note ?? '');
 
     if (tab === 'sales') {
       // 수수료 타입 판별
@@ -577,8 +596,9 @@ export function InputFormModal({
           await supabase.from('harvest_records').update({
             farm_id: farmId || null, date, crop_type: cropType || null,
             variety: editVariety || null, size: editSize || null,
-            quantity: qty, unit: editUnit || null, note: note || null,
+            quantity: qty, unit: editUnit || null,
           }).eq('id', editRecord.id).throwOnError();
+          await saveNote('harvest_notes', { userId, date, farmId: farmId || null, cropType: cropType || null, note });
         } else if (editRecord.type === 'sales') {
           const price = parseFloat(pricePerUnit) || 0;
           const cRate = parseFloat(commissionRate) || 0;
@@ -599,8 +619,9 @@ export function InputFormModal({
             quantity: qty, unit: editUnit || null,
             type: otherType,
             recipient: otherType === 'gift' ? (recipient || null) : null,
-            extra_cost: eCost > 0 ? eCost : null, note: note || null,
+            extra_cost: eCost > 0 ? eCost : null,
           }).eq('id', editRecord.id).throwOnError();
+          await saveNote('other_notes', { userId, date, farmId: farmId || null, cropType: cropType || null, note });
         }
 
       // ── 그룹 수정 ──
@@ -650,7 +671,7 @@ export function InputFormModal({
           } else {
             // 새로 추가된 항목 → upsert
             if (tab === 'harvest') {
-              await upsertHarvest({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, unit: e.unit, note: note || null });
+              await upsertHarvest({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, unit: e.unit });
             } else if (tab === 'sales') {
               const price = parseFloat(e.price ?? '0');
               const rev = qty * price;
@@ -658,11 +679,12 @@ export function InputFormModal({
               const cAmtN = commissionType === '%' ? rev * cIn / 100 : cIn;
               await upsertSales({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, price_per_unit: price, total_revenue: rev, buyer: buyer || null, commission_rate: commissionType === '%' ? cIn : 0, commission_amount: cAmtN, extra_cost: parseFloat(extraCost || '0') || 0, sale_type: resolvedSaleType || null });
             } else {
-              await upsertOther({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, unit: e.unit, type: otherType, recipient: otherType === 'gift' ? (recipient || null) : null, extra_cost: null, note: note || null });
+              await upsertOther({ ...baseFields, variety: e.variety || null, size: e.size || null, quantity: qty, unit: e.unit, type: otherType, recipient: otherType === 'gift' ? (recipient || null) : null, extra_cost: null });
             }
           }
         }
         if (tab === 'harvest') {
+          await saveNote('harvest_notes', { userId, date, farmId: farmId || null, cropType: cropType || null, note });
           const pendingWorkers = [...workers];
           if (wName.trim() && wCost.trim() && !isNaN(parseFloat(wCost))) {
             pendingWorkers.push({ name: wName.trim(), hours: wHours.trim(), cost: wCost.trim() });
@@ -686,6 +708,8 @@ export function InputFormModal({
             }
             setSavedLaborRecords((prev) => [...prev, ...(insertedLabor ?? [])]);
           }
+        } else if (tab === 'other') {
+          await saveNote('other_notes', { userId, date, farmId: farmId || null, cropType: cropType || null, note });
         }
 
       // ── 신규 입력 (upsert) ──
@@ -694,9 +718,10 @@ export function InputFormModal({
           for (const e of entries) {
             await upsertHarvest({
               ...baseFields, variety: e.variety || null, size: e.size || null,
-              quantity: parseFloat(e.quantity), unit: e.unit, note: note || null,
+              quantity: parseFloat(e.quantity), unit: e.unit,
             });
           }
+          await saveNote('harvest_notes', { userId, date, farmId: farmId || null, cropType: cropType || null, note });
           const pendingWorkers = [...workers];
           if (wName.trim() && wCost.trim() && !isNaN(parseFloat(wCost))) {
             pendingWorkers.push({ name: wName.trim(), hours: wHours.trim(), cost: wCost.trim() });
@@ -743,9 +768,10 @@ export function InputFormModal({
               ...baseFields, variety: e.variety || null, size: e.size || null,
               quantity: parseFloat(e.quantity), unit: e.unit,
               type: otherType, recipient: otherType === 'gift' ? (recipient || null) : null,
-              extra_cost: eCost > 0 ? eCost : null, note: note || null,
+              extra_cost: eCost > 0 ? eCost : null,
             });
           }
+          await saveNote('other_notes', { userId, date, farmId: farmId || null, cropType: cropType || null, note });
         }
       }
 

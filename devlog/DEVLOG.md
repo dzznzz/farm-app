@@ -15,6 +15,49 @@
 
 ---
 
+## 2026-06-11 — 11차 작업 (메모 저장 버그 수정 + harvest_notes / other_notes 테이블 분리)
+
+### 버그 수정 — 수확·기타 메모 미저장
+
+**원인 1 — 그룹 수정 시 UPDATE 쿼리에 note 누락**
+
+`InputFormModal` 그룹 수정 모드에서 기존 레코드를 UPDATE할 때 `note` 필드가 빠져 있어 저장이 안 되던 문제.
+
+**원인 2 — 그룹 수정 pre-fill 시 note 미복원**
+
+수정 창을 열면 `groupEditRecords`의 첫 번째 레코드에서 날짜·농장·작물 등은 복원했지만 `note`는 `setNote()` 호출이 없어 항상 빈 상태로 표시.
+
+**원인 3 — upsert 시 기존 레코드 발견 시 note 미업데이트**
+
+`upsertHarvest`에서 동일 조합 레코드 발견 시 `quantity`만 누적하고 `note`는 무시.
+
+### 리팩토링 — 메모를 별도 테이블로 분리
+
+note는 의미상 "날짜 + 농장 + 작물" 그룹 단위 개념인데 harvest_records 각 row에 중복 저장되는 구조적 문제를 해결.
+
+**DB 변경 (Supabase migration)**
+
+```sql
+create table harvest_notes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  date date not null,
+  farm_id uuid references farms(id) on delete cascade,
+  crop_type text,
+  note text not null,
+  created_at timestamptz default now()
+);
+-- RLS 동일하게 other_notes도 생성
+```
+
+**코드 변경**
+
+- `InputFormModal.tsx`: `saveNote()` 헬퍼 추가 — 저장 시 기존 note 삭제 후 재삽입 (NULL unique 문제 없는 delete+insert 패턴)
+- 수확·기타 모든 저장 경로(신규 / 그룹 수정 / 단일 수정)에서 `harvest_records` / `other_records` note 컬럼 사용 중단, `saveNote()` 호출로 교체
+- `input.tsx` `loadRecords`: `harvest_notes` / `other_notes` 병렬 조회 추가, `getNote()` 헬퍼로 그룹 키 매칭 → `DisplayRecord.note` 매핑
+
+---
+
 ## 2026-06-09 — 10차 작업 (입력 UI 개선 — 삭제 기능, 그룹 카드, 품종 칩 입력)
 
 ### 통계 탭 요약 카드 + 구성 비율 개선
