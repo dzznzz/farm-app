@@ -193,7 +193,7 @@ function formatHarvest(v: number): string {
   return `${v.toLocaleString()}kg`;
 }
 
-const EMPTY_SUMMARY: PeriodSummary = { harvest: 0, sales: 0, revenue: 0, netRevenue: 0, stock: 0, laborCost: 0, commissionTotal: 0, extraCostTotal: 0 };
+const EMPTY_SUMMARY: PeriodSummary = { harvest: 0, sales: 0, revenue: 0, netRevenue: 0, stock: 0, laborCost: 0, commissionTotal: 0, extraCostTotal: 0, otherExtraCostTotal: 0 };
 
 export default function StatisticsScreen() {
   const { user } = useAuth();
@@ -438,8 +438,8 @@ export default function StatisticsScreen() {
                 color={Colors.warning}
               />
             </View>
-            {(cur.commissionTotal > 0 || cur.extraCostTotal > 0 || cur.laborCost > 0) && (() => {
-              const total = cur.commissionTotal + cur.extraCostTotal + cur.laborCost;
+            {(cur.commissionTotal > 0 || cur.extraCostTotal > 0 || cur.laborCost > 0 || cur.otherExtraCostTotal > 0) && (() => {
+              const total = cur.commissionTotal + cur.extraCostTotal + cur.laborCost + cur.otherExtraCostTotal;
               return (
                 <Card style={styles.laborCard}>
                   <View style={styles.deductionHeader}>
@@ -458,9 +458,17 @@ export default function StatisticsScreen() {
                   )}
                   {cur.extraCostTotal > 0 && (
                     <View style={styles.deductionRow}>
-                      <Text style={styles.deductionLabel}>부수비용</Text>
+                      <Text style={styles.deductionLabel}>판매 부수비용</Text>
                       <Text style={[styles.deductionValue, { color: Colors.textSub }]}>
                         −{formatRevenue(cur.extraCostTotal)}
+                      </Text>
+                    </View>
+                  )}
+                  {cur.otherExtraCostTotal > 0 && (
+                    <View style={styles.deductionRow}>
+                      <Text style={styles.deductionLabel}>기타 부수비용</Text>
+                      <Text style={[styles.deductionValue, { color: Colors.textSub }]}>
+                        −{formatRevenue(cur.otherExtraCostTotal)}
                       </Text>
                     </View>
                   )}

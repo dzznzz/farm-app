@@ -16,15 +16,17 @@ import { TimePickerModal } from '../../components/modals/TimePickerModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowAlert: true,
-  }),
-});
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowAlert: true,
+    }),
+  });
+}
 
 interface Todo {
   id: string;
@@ -75,6 +77,7 @@ async function scheduleAlarm(todoId: string, date: string, time: string, text: s
 }
 
 async function cancelAlarm(todoId: string) {
+  if (Platform.OS === 'web') return;
   const id = await AsyncStorage.getItem(`todo_alarm_${todoId}`);
   if (id) {
     await Notifications.cancelScheduledNotificationAsync(id);

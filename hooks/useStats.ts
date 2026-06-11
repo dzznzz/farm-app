@@ -73,6 +73,7 @@ export interface PeriodSummary {
   laborCost: number;
   commissionTotal: number;
   extraCostTotal: number;
+  otherExtraCostTotal: number;
 }
 
 const applyFarm = (query: any, farmId?: string) =>
@@ -88,7 +89,7 @@ export async function fetchPeriodSummary(
   const [cH, cS, cO, cL, pH, pS] = await Promise.all([
     applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
     applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('other_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
+    applyFarm(supabase.from('other_records').select('quantity, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
     applyFarm(supabase.from('labor_records').select('labor_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
     applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
     applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
@@ -104,6 +105,7 @@ export async function fetchPeriodSummary(
   const curExtraCost = sum(cS.data, 'extra_cost');
   const curNet = curRevenue - curCommission - curExtraCost;
   const curOther = sum(cO.data, 'quantity');
+  const curOtherExtraCost = sum(cO.data, 'extra_cost');
   const curLabor = cL.error ? 0 : sum(cL.data, 'labor_cost');
 
   const prevRevenue = sum(pS.data, 'total_revenue');
@@ -122,24 +124,25 @@ export async function fetchPeriodSummary(
       revenue: pyRevenue,
       netRevenue: pyRevenue - sum(pyS.data, 'commission_amount') - sum(pyS.data, 'extra_cost'),
       stock: 0,
-      laborCost: 0, commissionTotal: 0, extraCostTotal: 0,
+      laborCost: 0, commissionTotal: 0, extraCostTotal: 0, otherExtraCostTotal: 0,
     };
   }
 
   return {
     current: {
       harvest: curHarvest, sales: curSales, revenue: curRevenue,
-      netRevenue: curNet - curLabor,
+      netRevenue: curNet - curLabor - curOtherExtraCost,
       stock: curHarvest - curSales - curOther,
       laborCost: curLabor,
       commissionTotal: curCommission,
       extraCostTotal: curExtraCost,
+      otherExtraCostTotal: curOtherExtraCost,
     },
     previous: {
       harvest: sum(pH.data, 'quantity'),
       sales: sum(pS.data, 'quantity'),
       revenue: prevRevenue, netRevenue: prevNet,
-      stock: 0, laborCost: 0, commissionTotal: 0, extraCostTotal: 0,
+      stock: 0, laborCost: 0, commissionTotal: 0, extraCostTotal: 0, otherExtraCostTotal: 0,
     },
     previousYear,
   };
@@ -304,7 +307,7 @@ export async function fetchPeriodSummaryForRange(
   const [cH, cS, cO, cL, pH, pS] = await Promise.all([
     applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
     applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('other_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
+    applyFarm(supabase.from('other_records').select('quantity, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
     applyFarm(supabase.from('labor_records').select('labor_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
     applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
     applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
@@ -314,6 +317,7 @@ export async function fetchPeriodSummaryForRange(
   const curCommission = sum(cS.data, 'commission_amount');
   const curExtraCost = sum(cS.data, 'extra_cost');
   const curNet = curRevenue - curCommission - curExtraCost;
+  const curOtherExtraCost = sum(cO.data, 'extra_cost');
   const curLabor = cL.error ? 0 : sum(cL.data, 'labor_cost');
   const curHarvest = sum(cH.data, 'quantity');
   const curSales = sum(cS.data, 'quantity');
@@ -321,17 +325,18 @@ export async function fetchPeriodSummaryForRange(
   return {
     current: {
       harvest: curHarvest, sales: curSales, revenue: curRevenue,
-      netRevenue: curNet - curLabor,
+      netRevenue: curNet - curLabor - curOtherExtraCost,
       stock: curHarvest - curSales - sum(cO.data, 'quantity'),
       laborCost: curLabor,
       commissionTotal: curCommission,
       extraCostTotal: curExtraCost,
+      otherExtraCostTotal: curOtherExtraCost,
     },
     previous: {
       harvest: sum(pH.data, 'quantity'), sales: sum(pS.data, 'quantity'),
       revenue: prevRevenue,
       netRevenue: prevRevenue - sum(pS.data, 'commission_amount') - sum(pS.data, 'extra_cost'),
-      stock: 0, laborCost: 0, commissionTotal: 0, extraCostTotal: 0,
+      stock: 0, laborCost: 0, commissionTotal: 0, extraCostTotal: 0, otherExtraCostTotal: 0,
     },
   };
 }

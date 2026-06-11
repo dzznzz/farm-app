@@ -4,7 +4,6 @@ import {
   Alert, ActivityIndicator, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Contact } from 'expo-contacts';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -51,7 +50,7 @@ export function ContactsPage({ onBack, userId }: Props) {
     if (!isMobile || !userId || importing) return;
     setImporting(true);
     try {
-      // 네이티브 연락처 피커 — 권한 없이 iOS 시스템 UI에서 직접 선택
+      const { Contact } = await import('expo-contacts');
       const contact = await Contact.presentPicker();
       if (!contact) return;
 
