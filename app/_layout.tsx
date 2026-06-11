@@ -3,9 +3,12 @@ import { Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
+import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../hooks/useAuth';
 import { Colors } from '../constants/theme';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const DAILY_NOTIF_KEY = 'daily_7pm_notif_id';
 

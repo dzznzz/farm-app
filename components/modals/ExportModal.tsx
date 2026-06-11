@@ -9,8 +9,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { fetchMonthlyExportData, createMonthlySpreadsheet } from '../../lib/googleSheets';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
-WebBrowser.maybeCompleteAuthSession();
-
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -65,7 +63,9 @@ export function ExportModal({ visible, onClose, userId }: Props) {
       // expo-auth-session v5는 자동 토큰 교환을 하지 않으므로 수동 교환
       let accessToken = result.authentication?.accessToken;
       if (!accessToken && result.params?.code) {
-        const clientId = Platform.OS === 'ios' ? IOS_CLIENT_ID : ANDROID_CLIENT_ID;
+        const clientId = Platform.OS === 'ios' ? IOS_CLIENT_ID
+        : Platform.OS === 'android' ? ANDROID_CLIENT_ID
+        : WEB_CLIENT_ID;
         const tokenResponse = await exchangeCodeAsync(
           {
             clientId,
