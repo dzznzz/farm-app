@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { BarChart, PieChart } from 'react-native-gifted-charts';
+import { PieChart, LineChart } from 'react-native-gifted-charts';
 import { useAuth } from '../../hooks/useAuth';
 import {
   fetchPeriodSummaryForRange, fetchStatsForRange,
@@ -228,6 +228,8 @@ export default function StatisticsScreen() {
   const [donutData, setDonutData] = useState<Awaited<ReturnType<typeof fetchBreakdown>> | null>(null);
 
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
+  const [priceFilter, setPriceFilter] = useState<string | null>(null);
+  const [priceChartWidth, setPriceChartWidth] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -244,8 +246,8 @@ export default function StatisticsScreen() {
     setBarLoading(true);
 
     const barF = getBarFrom(curT, p);
-    const d30 = new Date(); d30.setDate(d30.getDate() - 30);
-    const priceFrom = d30.toISOString().split('T')[0];
+    const d7 = new Date(); d7.setDate(d7.getDate() - 7);
+    const priceFrom = d7.toISOString().split('T')[0];
 
     const [summaryResult, statsData, breakdownResult, prices] = await Promise.all([
       fetchPeriodSummaryForRange(user.id, curF, curT, prevF, prevT, selectedFarmId),
@@ -293,19 +295,34 @@ export default function StatisticsScreen() {
   const chartData = fullRange.map((s) => {
     const val = chartType === 'harvest' ? s.harvest : s.revenue / 10000;
     const hasVal = val > 0;
+    const valueText = chartType === 'harvest'
+      ? (val >= 1000 ? `${(val / 1000).toFixed(1)}t` : `${Number.isInteger(val) ? val : val.toFixed(1)}`)
+      : `${val.toFixed(1)}만`;
     return {
       value: val,
+      valueText,
       label: formatDate(s.date, period),
       frontColor: hasVal ? Colors.primary : Colors.border,
-      topLabelComponent: hasVal ? () => (
-        <Text style={{ fontSize: 8, color: Colors.text, marginBottom: 1, fontWeight: '700' }}>
-          {chartType === 'harvest'
-            ? (val >= 1000 ? `${(val / 1000).toFixed(1)}t` : `${Number.isInteger(val) ? val : val.toFixed(1)}`)
-            : `${val.toFixed(1)}만`}
-        </Text>
-      ) : undefined,
     };
   });
+  const chartMax = Math.max(...chartData.map((d) => d.value), 1);
+
+  // 판매 단가: 품종·사이즈별 그룹 + 선택
+  const priceLabels = Array.from(new Set(priceHistory.map((p) => p.label)));
+  const activePriceLabel = priceFilter && priceLabels.includes(priceFilter)
+    ? priceFilter : priceLabels[0];
+  const priceChartData = priceHistory
+    .filter((p) => p.label === activePriceLabel)
+    .map((p) => ({
+      value: p.price,
+      label: p.date.slice(5),
+      dataPointText: p.price.toLocaleString(),
+    }));
+  const priceMax = Math.max(...priceChartData.map((d) => d.value), 1);
+  // 차트가 카드 너비를 꽉 채우도록 포인트 간격 계산 (y축 44 + 좌우 여백 제외)
+  const priceSpacing = priceChartWidth > 0 && priceChartData.length > 1
+    ? Math.max(24, (priceChartWidth - 44 - 20 - 24) / (priceChartData.length - 1))
+    : 48;
 
   // 도넛 데이터
   const donutItems = donutData
@@ -558,18 +575,21 @@ export default function StatisticsScreen() {
           {barLoading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginVertical: 40 }} />
           ) : (
-            <BarChart
-              data={chartData}
-              barWidth={chartData.length > 5 ? 26 : 36}
-              spacing={chartData.length > 5 ? 12 : 20}
-              roundedTop hideRules
-              xAxisThickness={0} yAxisThickness={0}
-              yAxisTextStyle={{ color: Colors.textSub, fontSize: 10 }}
-              xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
-              noOfSections={4}
-              maxValue={Math.max(...chartData.map((d) => d.value), 1) * 1.3}
-              isAnimated animationDuration={500}
-            />
+            <View style={styles.hBarChart}>
+              {chartData.map((d, i) => (
+                <View key={i} style={styles.hBarRow}>
+                  <Text style={styles.hBarLabel}>{d.label}</Text>
+                  <View style={styles.hBarAxis} />
+                  <View style={styles.hBarTrack}>
+                    <View style={[styles.hBarFill, {
+                      width: `${(d.value / chartMax) * 100}%`,
+                      backgroundColor: d.frontColor,
+                    }]} />
+                  </View>
+                  <Text style={styles.hBarValue}>{d.value > 0 ? d.valueText : '−'}</Text>
+                </View>
+              ))}
+            </View>
           )}
         </Card>
 
@@ -646,21 +666,49 @@ export default function StatisticsScreen() {
         {/* 최근 판매 단가 */}
         {priceHistory.length > 0 && (
           <Card style={styles.priceCard}>
-            <Text style={[Typography.h3, { marginBottom: Spacing.md }]}>최근 판매 단가</Text>
-            {priceHistory.slice(-8).map((item, i) => (
-              <View key={i} style={[styles.priceRow, i > 0 && { borderTopWidth: 1, borderTopColor: Colors.border }]}>
-                <Text style={styles.priceDate}>{item.date.slice(5)}</Text>
-                <Text style={styles.priceLabel} numberOfLines={1}>{item.label}</Text>
-                <Text style={styles.priceValue}>{item.price.toLocaleString()}원</Text>
-              </View>
-            ))}
+            <Text style={[Typography.h3, { marginBottom: Spacing.sm }]}>최근 판매 단가</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.priceChips}>
+              {priceLabels.map((l) => (
+                <TouchableOpacity key={l}
+                  style={[styles.priceChip, activePriceLabel === l && styles.priceChipActive]}
+                  onPress={() => setPriceFilter(l)}>
+                  <Text style={[styles.priceChipText, activePriceLabel === l && styles.priceChipTextActive]}>{l}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View onLayout={(e) => setPriceChartWidth(e.nativeEvent.layout.width)}>
+              {priceChartData.length > 0 && priceChartWidth > 0 && (
+                <LineChart
+                  data={priceChartData}
+                  thickness={2.5}
+                  color={Colors.primary}
+                  dataPointsColor={Colors.primaryDark}
+                  curved areaChart
+                  startFillColor={Colors.primary}
+                  startOpacity={0.15}
+                  endFillColor={Colors.primary}
+                  endOpacity={0.01}
+                  hideRules
+                  xAxisThickness={1} xAxisColor={Colors.border}
+                  yAxisThickness={0}
+                  yAxisTextStyle={{ color: Colors.textSub, fontSize: 9 }}
+                  xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
+                  yAxisLabelWidth={44}
+                  noOfSections={4}
+                  maxValue={priceMax * 1.25}
+                  width={priceChartWidth - 44}
+                  spacing={priceSpacing}
+                  initialSpacing={20}
+                  textColor={Colors.text}
+                  textFontSize={9}
+                  textShiftY={-6}
+                  isAnimated animationDuration={500}
+                />
+              )}
+            </View>
           </Card>
         )}
-
-        <TouchableOpacity style={styles.breakdownBtn} onPress={() => setShowBreakdown(true)}>
-          <Text style={styles.breakdownBtnText}>📊 작물·품종·사이즈별 상세 분석</Text>
-          <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={[styles.breakdownBtn, { marginTop: Spacing.sm }]} onPress={() => setShowExport(true)}>
           <Text style={styles.breakdownBtnText}>📥 Google Sheets로 월간 데이터 내보내기</Text>
           <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
@@ -776,10 +824,25 @@ const styles = StyleSheet.create({
   stockResultLabel: { ...Typography.bodyBold },
   stockResultValue: { fontSize: 22, fontWeight: '800' },
   priceCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
-  priceRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 6 },
-  priceDate: { ...Typography.caption, color: Colors.textSub, width: 36 },
-  priceLabel: { ...Typography.caption, color: Colors.text, flex: 1 },
-  priceValue: { ...Typography.bodyBold, color: Colors.primaryDark },
+  priceChips: { gap: 6, paddingBottom: Spacing.md },
+  priceChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
+  },
+  priceChipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
+  priceChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSub },
+  priceChipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
+  // 가로 막대 차트 (web)
+  hBarChart: { gap: 8, paddingVertical: 4 },
+  hBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  hBarLabel: { width: 44, fontSize: 11, color: Colors.textSub, textAlign: 'right' },
+  hBarAxis: { width: 2, alignSelf: 'stretch', backgroundColor: Colors.border },
+  hBarTrack: {
+    flex: 1, height: 18, backgroundColor: Colors.primaryUltraLight,
+    borderTopRightRadius: 9, borderBottomRightRadius: 9, overflow: 'hidden',
+  },
+  hBarFill: { height: '100%', borderTopRightRadius: 9, borderBottomRightRadius: 9 },
+  hBarValue: { width: 56, fontSize: 11, fontWeight: '700', color: Colors.text },
   breakdownBtn: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginHorizontal: Spacing.md, marginTop: Spacing.sm,

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator,
+  RefreshControl, ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -251,16 +251,29 @@ export default function HomeScreen() {
         {/* 4. 빠른 메뉴 */}
         <View style={[styles.section, { marginBottom: Spacing.xl }]}>
           <Text style={styles.sectionTitle}>빠른 메뉴</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickMenuRow}>
-            {QUICK_MENUS.map((item) => (
-              <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress}>
-                <Card style={styles.quickCard}>
-                  <Text style={styles.quickEmoji}>{item.emoji}</Text>
-                  <Text style={styles.quickLabel}>{item.label}</Text>
-                </Card>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {Platform.OS === 'web' ? (
+            <View style={styles.quickMenuRowWeb}>
+              {QUICK_MENUS.map((item) => (
+                <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress} style={styles.quickBtnWeb}>
+                  <Card style={styles.quickCardWeb}>
+                    <Text style={styles.quickEmoji}>{item.emoji}</Text>
+                    <Text style={styles.quickLabel}>{item.label}</Text>
+                  </Card>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickMenuRow}>
+              {QUICK_MENUS.map((item) => (
+                <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress}>
+                  <Card style={styles.quickCard}>
+                    <Text style={styles.quickEmoji}>{item.emoji}</Text>
+                    <Text style={styles.quickLabel}>{item.label}</Text>
+                  </Card>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -330,6 +343,9 @@ const styles = StyleSheet.create({
   // Quick menu
   quickMenuRow: { gap: Spacing.sm, paddingRight: Spacing.sm },
   quickCard: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, width: 80 },
+  quickMenuRowWeb: { flexDirection: 'row', gap: Spacing.sm },
+  quickBtnWeb: { flex: 1 },
+  quickCardWeb: { alignItems: 'center', paddingVertical: 18 },
   quickEmoji: { fontSize: 26, marginBottom: 6 },
   quickLabel: { fontSize: 11, fontWeight: '700', color: Colors.text, textAlign: 'center' },
 });

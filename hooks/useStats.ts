@@ -203,8 +203,9 @@ export async function fetchPriceHistory(
     supabase.from('sales_records')
       .select('date, price_per_unit, crop_type, variety, size')
       .eq('user_id', userId).gte('date', from).lte('date', to)
-      .order('date', { ascending: true })
-      .limit(20),
+      // 최신 데이터가 limit에 잘리지 않도록 내림차순으로 가져온 뒤 뒤집는다
+      .order('date', { ascending: false })
+      .limit(100),
     farmId,
   );
   const { data } = await q;
@@ -214,7 +215,8 @@ export async function fetchPriceHistory(
       date: r.date,
       price: r.price_per_unit ?? 0,
       label: [r.crop_type, r.variety, r.size].filter(Boolean).join(' '),
-    }));
+    }))
+    .reverse();
 }
 
 export async function fetchSummary(userId: string) {
