@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
+import { PhIcon } from '../../components/ui/PhIcon';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
@@ -258,7 +259,7 @@ export default function TodoScreen() {
         <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: Spacing.xl * 2 }}>
           {todos.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyEmoji}>📋</Text>
+              <PhIcon name="clipboard-text" size={48} color={Colors.textLight} style={{ marginBottom: 12 }} />
               <Text style={styles.emptyText}>할 일이 없어요</Text>
               <Text style={styles.emptySubText}>아래에서 추가해보세요</Text>
             </View>
@@ -281,7 +282,7 @@ export default function TodoScreen() {
                           onPress={() => setShowEditTimePicker(true)}
                         >
                           <Text style={[styles.editTimeBtnText, editTime ? styles.editTimeBtnActive : null]}>
-                            {editTime ? `🕐 ${editTime}` : '⏰ 시간'}
+                            {editTime ? editTime : '시간'}
                           </Text>
                           {editTime ? (
                             <TouchableOpacity
@@ -305,7 +306,10 @@ export default function TodoScreen() {
                             onPress={() => setShowEditAlarmTooltip((v) => !v)}
                             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                           >
-                            <Text style={styles.alarmLabel}>🔔 알람 설정 (10분 전)</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <PhIcon name="bell" size={14} color={Colors.textSub} />
+                      <Text style={styles.alarmLabel}>알람 설정 (10분 전)</Text>
+                    </View>
                           </TouchableOpacity>
                           <Switch
                             value={editAlarm}
@@ -336,7 +340,10 @@ export default function TodoScreen() {
                           {todo.text}
                         </Text>
                         {todo.time ? (
-                          <Text style={styles.todoTime}>🕐 {todo.time}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
+                            <PhIcon name="clock" size={12} color={Colors.textSub} />
+                            <Text style={styles.todoTime}>{todo.time}</Text>
+                          </View>
                         ) : null}
                       </View>
                       <TouchableOpacity onPress={() => handleStartEdit(todo)} style={styles.editBtn}>
@@ -367,7 +374,7 @@ export default function TodoScreen() {
             <View style={styles.addBottomRow}>
               <TouchableOpacity style={styles.addTimeBtn} onPress={() => setShowTimePicker(true)}>
                 <Text style={[styles.addTimeBtnText, newTime ? styles.addTimeBtnActive : null]}>
-                  {newTime ? `🕐 ${newTime}` : '⏰ 시간 선택'}
+                  {newTime ? newTime : '시간 선택'}
                 </Text>
                 {newTime ? (
                   <TouchableOpacity onPress={() => setNewTime('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -381,7 +388,7 @@ export default function TodoScreen() {
                     onPress={() => setShowAlarmTooltip((v) => !v)}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Text style={styles.alarmSmallLabel}>🔔</Text>
+                    <PhIcon name="bell" size={16} color={Colors.textSub} />
                   </TouchableOpacity>
                   <Switch
                     value={newAlarm}
@@ -463,7 +470,7 @@ const styles = StyleSheet.create({
   clearBtnText: { fontSize: 12, color: Colors.danger, fontWeight: '600' },
   scroll: { flex: 1 },
   empty: { alignItems: 'center', marginTop: 80 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
+  emptyEmoji: {},
   emptyText: { ...Typography.bodyBold, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4 },
   listCard: { margin: Spacing.lg, padding: 0, overflow: 'hidden' },
@@ -551,7 +558,7 @@ const styles = StyleSheet.create({
   addTimeBtnActive: { color: Colors.primary, fontWeight: '600' },
   addTimeClear: { fontSize: 13, color: Colors.textSub, paddingLeft: 8 },
   alarmToggle: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  alarmSmallLabel: { fontSize: 16 },
+  alarmSmallLabel: {},
   addBtn: {
     backgroundColor: Colors.primary, borderRadius: Radius.md,
     paddingHorizontal: Spacing.lg, justifyContent: 'center',

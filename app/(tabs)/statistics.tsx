@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  Animated, Easing,
+  Animated, Easing, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +21,7 @@ import { ExportModal } from '../../components/modals/ExportModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { PeriodType, DailyStat } from '../../types';
+import { PhIcon } from '../../components/ui/PhIcon';
 
 const PERIODS: { key: PeriodType; label: string }[] = [
   { key: 'day', label: '일별' },
@@ -429,13 +430,13 @@ export default function StatisticsScreen() {
           <View style={styles.summarySection}>
             <View style={styles.summaryRow}>
               <SummaryCard
-                icon="🫐" title="수확량"
+                icon="blueberry" title="수확량"
                 value={cur.harvest.toLocaleString()} unit="kg"
                 changeRate={harvestRate} compareLabel={labels.harvest}
                 color={Colors.primary}
               />
               <SummaryCard
-                icon="💰" title="판매량"
+                icon="money" title="판매량"
                 value={cur.sales.toLocaleString()} unit="kg"
                 changeRate={salesRate} compareLabel={salesLabel}
                 color={Colors.primaryDark}
@@ -443,13 +444,13 @@ export default function StatisticsScreen() {
             </View>
             <View style={styles.summaryRow}>
               <SummaryCard
-                icon="💵" title="매출"
+                icon="currency-krw" title="매출"
                 value={(cur.revenue / 10000).toFixed(1)} unit="만원"
                 changeRate={revenueRate} compareLabel={labels.revenue}
                 color={Colors.success}
               />
               <SummaryCard
-                icon="✨" title="순수익"
+                icon="trend-up" title="순수익"
                 value={(cur.netRevenue / 10000).toFixed(1)} unit="만원"
                 changeRate={netRevenueRate} compareLabel={netRevenueLabel}
                 color={Colors.warning}
@@ -519,16 +520,23 @@ export default function StatisticsScreen() {
           </View>
           {pieData.length > 0 ? (
             <View style={styles.donutBody}>
-              <Animated.View style={{ transform: [{ rotate: donutSpin }] }}>
-                <PieChart donut data={pieData} radius={100} innerRadius={60} showText={false}
-                  centerLabelComponent={() => (
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
-                      <Text style={{ fontSize: 11, color: Colors.textSub }}>kg</Text>
-                    </View>
-                  )}
-                />
-              </Animated.View>
+              {Platform.OS !== 'web' ? (
+                <Animated.View style={{ transform: [{ rotate: donutSpin }] }}>
+                  <PieChart donut data={pieData} radius={100} innerRadius={60} showText={false}
+                    centerLabelComponent={() => (
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
+                        <Text style={{ fontSize: 11, color: Colors.textSub }}>kg</Text>
+                      </View>
+                    )}
+                  />
+                </Animated.View>
+              ) : (
+                <View style={styles.webChartFallback}>
+                  <Text style={styles.webChartFallbackText}>{donutTotal.toLocaleString()} kg</Text>
+                  <Text style={styles.webChartFallbackSub}>차트는 앱에서 확인</Text>
+                </View>
+              )}
               <View style={styles.donutTable}>
                 <View style={styles.donutTableHeader}>
                   <Text style={[styles.donutTableHeaderText, { flex: 1 }]}>항목</Text>
@@ -678,7 +686,7 @@ export default function StatisticsScreen() {
               ))}
             </ScrollView>
             <View onLayout={(e) => setPriceChartWidth(e.nativeEvent.layout.width)}>
-              {priceChartData.length > 0 && priceChartWidth > 0 && (
+              {priceChartData.length > 0 && priceChartWidth > 0 && Platform.OS !== 'web' && (
                 <LineChart
                   data={priceChartData}
                   thickness={2.5}
@@ -710,7 +718,8 @@ export default function StatisticsScreen() {
           </Card>
         )}
         <TouchableOpacity style={[styles.breakdownBtn, { marginTop: Spacing.sm }]} onPress={() => setShowExport(true)}>
-          <Text style={styles.breakdownBtnText}>📥 Google Sheets로 월간 데이터 내보내기</Text>
+          <PhIcon name="table" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
+          <Text style={styles.breakdownBtnText}>Google Sheets로 월간 데이터 내보내기</Text>
           <Text style={{ color: Colors.primary, fontSize: 16 }}>›</Text>
         </TouchableOpacity>
         <View style={{ height: Spacing.xl }} />
@@ -800,6 +809,9 @@ const styles = StyleSheet.create({
   donutTableValue: { width: 76, fontSize: 13, fontWeight: '700', color: Colors.primaryDark, textAlign: 'right' },
   donutTablePct: { width: 50, fontSize: 12, color: Colors.textSub, textAlign: 'right', fontWeight: '600' },
   emptyChart: { alignItems: 'center', paddingVertical: 32 },
+  webChartFallback: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, width: 200 },
+  webChartFallbackText: { fontSize: 22, fontWeight: '700', color: Colors.primary },
+  webChartFallbackSub: { fontSize: 12, color: Colors.textSub, marginTop: 4 },
   emptyText: { ...Typography.body, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4, color: Colors.textLight },
   compareCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Typography } from '../../constants/theme';
 import { pageStyles, SettingField } from './shared';
 
@@ -155,7 +156,10 @@ export function ContactsPage({ onBack, userId }: Props) {
     <SafeAreaView style={pageStyles.container}>
       <View style={pageStyles.subHeader}>
         <TouchableOpacity onPress={onBack}><Text style={pageStyles.backBtn}>←</Text></TouchableOpacity>
-        <Text style={pageStyles.subTitle}>📱 연락처</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PhIcon name="device-mobile" size={20} color={Colors.text} />
+          <Text style={pageStyles.subTitle}>연락처</Text>
+        </View>
         {isMobile ? (
           <TouchableOpacity onPress={() => setAddMode(true)}>
             <Text style={pageStyles.addBtnText}>+ 추가</Text>
@@ -182,7 +186,7 @@ export function ContactsPage({ onBack, userId }: Props) {
             disabled={importing}
           >
             <Text style={styles.importBtnText}>
-              {importing ? '가져오는 중...' : '📲 기기에서 가져오기'}
+              {importing ? '가져오는 중...' : '기기에서 가져오기'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -195,7 +199,7 @@ export function ContactsPage({ onBack, userId }: Props) {
           <>
             {!isMobile && (
               <View style={styles.nonMobileBanner}>
-                <Text style={styles.nonMobileBannerText}>📱 휴대폰에서만 사용 가능한 기능입니다. 연락처 조회만 가능합니다.</Text>
+                <Text style={styles.nonMobileBannerText}>휴대폰에서만 사용 가능한 기능입니다. 연락처 조회만 가능합니다.</Text>
               </View>
             )}
 
@@ -256,13 +260,13 @@ export function ContactsPage({ onBack, userId }: Props) {
                           {contact.phone && (
                             <>
                               <TouchableOpacity style={styles.actionBtn} onPress={() => callContact(contact.phone!)}>
-                                <Text style={styles.actionBtnText}>📞</Text>
+                                <PhIcon name="phone" size={18} color={Colors.primary} />
                               </TouchableOpacity>
                               <TouchableOpacity style={styles.actionBtn} onPress={() => smsContact(contact.phone!)}>
-                                <Text style={styles.actionBtnText}>💬</Text>
+                                <PhIcon name="chat-circle" size={18} color={Colors.success} />
                               </TouchableOpacity>
                               <TouchableOpacity style={styles.actionBtn} onPress={() => kakaoContact()}>
-                                <Text style={styles.actionBtnText}>🟡</Text>
+                                <PhIcon name="chat-circle-dots" size={18} color="#FAE100" />
                               </TouchableOpacity>
                             </>
                           )}
@@ -270,10 +274,10 @@ export function ContactsPage({ onBack, userId }: Props) {
                             style={styles.actionBtn}
                             onPress={() => { setEditId(contact.id); setEditName(contact.name); setEditPhone(contact.phone ?? ''); }}
                           >
-                            <Text style={styles.actionBtnText}>✏️</Text>
+                            <PhIcon name="pencil-simple" size={18} color={Colors.textSub} />
                           </TouchableOpacity>
                           <TouchableOpacity style={styles.actionBtn} onPress={() => deleteContact(contact.id, contact.name)}>
-                            <Text style={styles.actionBtnText}>🗑️</Text>
+                            <PhIcon name="trash" size={18} color={Colors.danger} />
                           </TouchableOpacity>
                         </View>
                       )}
@@ -285,7 +289,7 @@ export function ContactsPage({ onBack, userId }: Props) {
 
             {contacts.length === 0 && !addMode && (
               <View style={{ alignItems: 'center', marginTop: 60 }}>
-                <Text style={{ fontSize: 48 }}>📱</Text>
+                <PhIcon name="device-mobile" size={48} color={Colors.textLight} />
                 <Text style={[Typography.body, { color: Colors.textSub, marginTop: Spacing.md }]}>등록된 연락처가 없습니다</Text>
                 {isMobile && (
                   <TouchableOpacity style={pageStyles.emptyAddBtn} onPress={() => setAddMode(true)}>

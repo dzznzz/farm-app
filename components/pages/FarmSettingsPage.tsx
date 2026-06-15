@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Typography, Radius } from '../../constants/theme';
 import { pageStyles, SettingField } from './shared';
 
@@ -169,7 +170,10 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
     <SafeAreaView style={pageStyles.container}>
       <View style={pageStyles.subHeader}>
         <TouchableOpacity onPress={onBack}><Text style={pageStyles.backBtn}>←</Text></TouchableOpacity>
-        <Text style={pageStyles.subTitle}>⚙️ 농장 설정</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PhIcon name="gear" size={20} color={Colors.text} />
+          <Text style={pageStyles.subTitle}>농장 설정</Text>
+        </View>
         {farms.length < MAX_FARMS ? (
           <TouchableOpacity onPress={() => setAddMode(true)}>
             <Text style={pageStyles.addBtnText}>+ 추가</Text>
@@ -288,7 +292,7 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
 
             {farms.length === 0 && !addMode && (
               <View style={{ alignItems: 'center', marginTop: 60 }}>
-                <Text style={{ fontSize: 48 }}>🌾</Text>
+                <PhIcon name="plant" size={48} color={Colors.textLight} />
                 <Text style={[Typography.body, { color: Colors.textSub, marginTop: Spacing.md }]}>등록된 농장이 없습니다</Text>
                 <TouchableOpacity style={pageStyles.emptyAddBtn} onPress={() => setAddMode(true)}>
                   <Text style={pageStyles.emptyAddBtnText}>+ 농장 추가하기</Text>

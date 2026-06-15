@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform,
 } from 'react-native';
+import { PhIcon } from '../../components/ui/PhIcon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
@@ -54,17 +55,20 @@ export default function MoreScreen() {
       <ScrollView style={styles.scroll}>
         <Card style={styles.menuCard}>
           {[
-            { label: '🤖 농업 AI 챗봇', desc: '농작물 관리 전문 상담', page: 'chatbot' as PageType },
-            { label: '🗺️ 수확 동선 추적', desc: 'GPS로 수확 경로 기록', page: 'harvest' as PageType },
+            { icon: 'robot', label: '농업 AI 챗봇', desc: '농작물 관리 전문 상담', page: 'chatbot' as PageType },
+            { icon: 'map-trifold', label: '수확 동선 추적', desc: 'GPS로 수확 경로 기록', page: 'harvest' as PageType },
           ].map((item, i) => (
             <TouchableOpacity
               key={item.label}
               style={[styles.menuItem, i > 0 && styles.menuBorder]}
               onPress={() => setPage(item.page)}
             >
-              <View>
-                <Text style={styles.menuLabel}>{item.label}</Text>
-                <Text style={styles.menuDesc}>{item.desc}</Text>
+              <View style={styles.menuIconRow}>
+                <PhIcon name={item.icon as any} size={20} color={Colors.primary} style={styles.menuIcon} />
+                <View>
+                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  <Text style={styles.menuDesc}>{item.desc}</Text>
+                </View>
               </View>
               <Text style={{ color: Colors.textLight, fontSize: 18 }}>›</Text>
             </TouchableOpacity>
@@ -73,18 +77,21 @@ export default function MoreScreen() {
 
         <Card style={styles.menuCardSecond}>
           {[
-            { label: '⚙️ 농장 설정', desc: '농장 및 작물 관리', page: 'farmSettings' as PageType },
-            { label: '👤 프로필 수정', desc: '계정 정보 변경', page: 'profileEdit' as PageType },
-            { label: '📱 연락처 관리', desc: '거래처 및 지인 연락처', page: 'contacts' as PageType },
+            { icon: 'gear', label: '농장 설정', desc: '농장 및 작물 관리', page: 'farmSettings' as PageType },
+            { icon: 'user', label: '프로필 수정', desc: '계정 정보 변경', page: 'profileEdit' as PageType },
+            { icon: 'device-mobile', label: '연락처 관리', desc: '거래처 및 지인 연락처', page: 'contacts' as PageType },
           ].map((item, i) => (
             <TouchableOpacity
               key={item.label}
               style={[styles.menuItem, i > 0 && styles.menuBorder]}
               onPress={() => setPage(item.page)}
             >
-              <View>
-                <Text style={styles.menuLabel}>{item.label}</Text>
-                <Text style={styles.menuDesc}>{item.desc}</Text>
+              <View style={styles.menuIconRow}>
+                <PhIcon name={item.icon as any} size={20} color={Colors.primary} style={styles.menuIcon} />
+                <View>
+                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  <Text style={styles.menuDesc}>{item.desc}</Text>
+                </View>
               </View>
               <Text style={{ color: Colors.textLight, fontSize: 18 }}>›</Text>
             </TouchableOpacity>
@@ -98,9 +105,12 @@ export default function MoreScreen() {
               style={styles.menuItem}
               onPress={() => setPage('adminData')}
             >
-              <View>
-                <Text style={styles.menuLabel}>🗃️ 데이터 관리</Text>
-                <Text style={styles.menuDesc}>작물·품종·사이즈·단위 관리</Text>
+              <View style={styles.menuIconRow}>
+                <PhIcon name="database" size={20} color={Colors.primary} style={styles.menuIcon} />
+                <View>
+                  <Text style={styles.menuLabel}>데이터 관리</Text>
+                  <Text style={styles.menuDesc}>작물·품종·사이즈·단위 관리</Text>
+                </View>
               </View>
               <Text style={{ color: Colors.textLight, fontSize: 18 }}>›</Text>
             </TouchableOpacity>
@@ -123,6 +133,8 @@ const styles = StyleSheet.create({
   menuCard: { margin: Spacing.lg, marginBottom: Spacing.sm, padding: 0, overflow: 'hidden' },
   menuCardSecond: { marginHorizontal: Spacing.lg, marginBottom: Spacing.sm, padding: 0, overflow: 'hidden' },
   menuItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.md },
+  menuIconRow: { flexDirection: 'row', alignItems: 'center' },
+  menuIcon: { marginRight: Spacing.sm },
   menuBorder: { borderTopWidth: 1, borderTopColor: Colors.border },
   menuLabel: { ...Typography.bodyBold, marginBottom: 2 },
   menuDesc: { ...Typography.caption },

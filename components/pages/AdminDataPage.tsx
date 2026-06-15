@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Toast, useToast } from '../ui/Toast';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { pageStyles } from './shared';
 
@@ -35,13 +36,19 @@ export function AdminDataPage({ onBack, readOnly = false }: Props) {
     <SafeAreaView style={pageStyles.container}>
       <View style={pageStyles.subHeader}>
         <TouchableOpacity onPress={onBack}><Text style={pageStyles.backBtn}>←</Text></TouchableOpacity>
-        <Text style={pageStyles.subTitle}>🗃️ 데이터 관리</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PhIcon name="database" size={20} color={Colors.text} />
+          <Text style={pageStyles.subTitle}>데이터 관리</Text>
+        </View>
         <View style={{ width: 40 }} />
       </View>
 
       {readOnly && (
         <View style={styles.readOnlyBanner}>
-          <Text style={styles.readOnlyText}>🖥️ PC에서만 수정이 가능합니다. 조회만 가능합니다.</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <PhIcon name="monitor" size={16} color={Colors.primaryDark} />
+            <Text style={styles.readOnlyText}>PC에서만 수정이 가능합니다. 조회만 가능합니다.</Text>
+          </View>
         </View>
       )}
 

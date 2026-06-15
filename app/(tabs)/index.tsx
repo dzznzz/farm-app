@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { PhIcon } from '../../components/ui/PhIcon';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchSummary } from '../../hooks/useStats';
 import { supabase } from '../../lib/supabase';
@@ -91,17 +92,17 @@ export default function HomeScreen() {
 
   const now = new Date();
   const h = now.getHours();
-  const greeting = 
-      (h >= 5  && h < 10) ? '좋은 아침이에요🙌'
-    : (h >= 10 && h < 17) ? '오늘도 화이팅👍'
-    : '수고하셨어요 👋';
+  const greeting =
+      (h >= 5  && h < 10) ? '좋은 아침이에요'
+    : (h >= 10 && h < 17) ? '오늘도 화이팅'
+    : '수고하셨어요';
 
   const QUICK_MENUS = [
-    { emoji: '🫐', label: '수확 입력', onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'harvest' } } as any) },
-    { emoji: '💰', label: '판매 입력', onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'sales' } } as any) },
-    { emoji: '📊', label: '통계', onPress: () => router.push('/(tabs)/statistics' as any) },
-    { emoji: '📞', label: '연락처', onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'contacts' } } as any) },
-    { emoji: '🤖', label: '챗봇', onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'chatbot' } } as any) },
+    { iconName: 'blueberry', label: '수확 입력', onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'harvest' } } as any) },
+    { iconName: 'money', label: '판매 입력', onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'sales' } } as any) },
+    { iconName: 'chart-bar', label: '통계', onPress: () => router.push('/(tabs)/statistics' as any) },
+    { iconName: 'phone', label: '연락처', onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'contacts' } } as any) },
+    { iconName: 'robot', label: '챗봇', onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'chatbot' } } as any) },
   ];
 
   const doneCount = todos.filter((t) => t.completed).length;
@@ -125,7 +126,10 @@ export default function HomeScreen() {
             <View>
               <Text style={styles.greeting}>{greeting}</Text>
               <Text style={styles.name}>{profile?.name ?? '농장주'}님</Text>
-              <Text style={styles.region}>📍 {profile?.region ?? '지역 미설정'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 3 }}>
+                <PhIcon name="map-pin" size={12} color={Colors.textSub} />
+                <Text style={styles.region}>{profile?.region ?? '지역 미설정'}</Text>
+              </View>
             </View>
             <View style={styles.dateBadge}>
               <Text style={styles.dateText}>
@@ -142,7 +146,7 @@ export default function HomeScreen() {
             onPress={() => router.push('/(tabs)/todo' as any)}
             activeOpacity={0.7}
           >
-            <Text style={styles.sectionTitle}>오늘 할 일 📋</Text>
+            <Text style={styles.sectionTitle}>오늘 할 일</Text>
             <View style={styles.todoMeta}>
               {todos.length > 0 && (
                 <Text style={styles.todoBadge}>{doneCount}/{todos.length}</Text>
@@ -171,7 +175,12 @@ export default function HomeScreen() {
                       <Text style={[styles.todoText, todo.completed && styles.todoTextDone]}>
                         {todo.text}
                       </Text>
-                      {todo.time ? <Text style={styles.todoTime}>🕐 {todo.time}</Text> : null}
+                      {todo.time ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
+                          <PhIcon name="clock" size={11} color={Colors.textSub} />
+                          <Text style={styles.todoTime}>{todo.time}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -199,7 +208,7 @@ export default function HomeScreen() {
                 unit="kg"
                 changeRate={summary.changeRateHarvestToday}
                 compareLabel="어제 대비"
-                icon="🫐"
+                icon="blueberry"
                 color={Colors.primary}
               />
             </TouchableOpacity>
@@ -211,7 +220,7 @@ export default function HomeScreen() {
                 unit="만원"
                 changeRate={summary.changeRateRevenueToday}
                 compareLabel="어제 대비"
-                icon="💰"
+                icon="money"
                 color={Colors.success}
               />
             </TouchableOpacity>
@@ -224,7 +233,7 @@ export default function HomeScreen() {
                 unit="kg"
                 changeRate={summary.changeRateHarvestWeek}
                 compareLabel="저번 주 대비"
-                icon="📦"
+                icon="package"
               />
             </TouchableOpacity>
             <View style={{ width: Spacing.sm }} />
@@ -235,7 +244,7 @@ export default function HomeScreen() {
                 unit="만원"
                 changeRate={summary.changeRateRevenueWeek}
                 compareLabel="저번 주 대비"
-                icon="📈"
+                icon="trend-up"
                 color={Colors.warning}
               />
             </TouchableOpacity>
@@ -256,7 +265,7 @@ export default function HomeScreen() {
               {QUICK_MENUS.map((item) => (
                 <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress} style={styles.quickBtnWeb}>
                   <Card style={styles.quickCardWeb}>
-                    <Text style={styles.quickEmoji}>{item.emoji}</Text>
+                    <PhIcon name={item.iconName as any} size={26} color={Colors.primary} style={{ marginBottom: 6 }} />
                     <Text style={styles.quickLabel}>{item.label}</Text>
                   </Card>
                 </TouchableOpacity>
@@ -267,7 +276,7 @@ export default function HomeScreen() {
               {QUICK_MENUS.map((item) => (
                 <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress}>
                   <Card style={styles.quickCard}>
-                    <Text style={styles.quickEmoji}>{item.emoji}</Text>
+                    <PhIcon name={item.iconName as any} size={26} color={Colors.primary} style={{ marginBottom: 6 }} />
                     <Text style={styles.quickLabel}>{item.label}</Text>
                   </Card>
                 </TouchableOpacity>
@@ -346,6 +355,6 @@ const styles = StyleSheet.create({
   quickMenuRowWeb: { flexDirection: 'row', gap: Spacing.sm },
   quickBtnWeb: { flex: 1 },
   quickCardWeb: { alignItems: 'center', paddingVertical: 18 },
-  quickEmoji: { fontSize: 26, marginBottom: 6 },
+  quickEmoji: {},
   quickLabel: { fontSize: 11, fontWeight: '700', color: Colors.text, textAlign: 'center' },
 });

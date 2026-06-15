@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { PhIcon, type PhIconName } from '../ui/PhIcon';
 import { Card } from '../ui/Card';
 import { StatBadge } from '../ui/StatBadge';
 import { Colors, Typography, Spacing } from '../../constants/theme';
@@ -10,7 +11,7 @@ interface SummaryCardProps {
   unit: string;
   changeRate: number | null;
   compareLabel: string;
-  icon: string;
+  icon: PhIconName;
   color?: string;
 }
 
@@ -18,7 +19,7 @@ export function SummaryCard({ title, value, unit, changeRate, compareLabel, icon
   return (
     <Card style={styles.card}>
       <View style={styles.header}>
-        <Text style={styles.icon}>{icon}</Text>
+        <PhIcon name={icon} size={20} color={color || Colors.text} style={{ marginRight: 6 }} />
         <Text style={styles.title}>{title}</Text>
       </View>
       <Text style={[styles.value, color ? { color } : {}]}>{value}</Text>
@@ -36,7 +37,7 @@ export function SummaryCard({ title, value, unit, changeRate, compareLabel, icon
 const styles = StyleSheet.create({
   card: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
-  icon: { fontSize: 20, marginRight: 6 },
+  icon: { marginRight: 6 },
   title: { ...Typography.caption, fontWeight: '600' },
   value: { fontSize: 28, fontWeight: '800', color: Colors.text, lineHeight: 34 },
   unit: { ...Typography.caption, marginTop: 2, marginBottom: Spacing.sm },

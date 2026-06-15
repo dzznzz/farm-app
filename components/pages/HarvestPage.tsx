@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Typography } from '../../constants/theme';
 import { pageStyles } from './shared';
 
@@ -54,18 +55,26 @@ export function HarvestPage({ onBack, userId }: Props) {
     <SafeAreaView style={pageStyles.container}>
       <View style={pageStyles.subHeader}>
         <TouchableOpacity onPress={onBack}><Text style={pageStyles.backBtn}>←</Text></TouchableOpacity>
-        <Text style={pageStyles.subTitle}>🗺️ 수확 동선 추적</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PhIcon name="map-trifold" size={20} color={Colors.text} />
+          <Text style={pageStyles.subTitle}>수확 동선 추적</Text>
+        </View>
         <View style={{ width: 40 }} />
       </View>
       <ScrollView style={pageStyles.scroll}>
         <Card style={{ margin: Spacing.lg, alignItems: 'center' }}>
-          <Text style={{ fontSize: 72, marginBottom: Spacing.md }}>{isTracking ? '🔴' : '🟢'}</Text>
+          <PhIcon
+            name={isTracking ? 'record' : 'circle'}
+            size={72}
+            color={isTracking ? Colors.danger : Colors.success}
+            style={{ marginBottom: Spacing.md }}
+          />
           <Text style={Typography.h3}>{isTracking ? '추적 중...' : '추적 대기 중'}</Text>
           {isTracking && <Text style={[Typography.caption, { marginTop: 8 }]}>기록된 위치: {tracks.length}개</Text>}
           <View style={{ marginTop: Spacing.lg, width: '100%' }}>
             {!isTracking
-              ? <Button title="🌾 수확 시작" onPress={startTracking} />
-              : <Button title="⏹ 수확 완료" onPress={stopTracking} variant="outline" />
+              ? <Button title="수확 시작" onPress={startTracking} />
+              : <Button title="수확 완료" onPress={stopTracking} variant="outline" />
             }
           </View>
         </Card>

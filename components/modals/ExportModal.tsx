@@ -7,6 +7,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import { exchangeCodeAsync } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { fetchMonthlyExportData, createMonthlySpreadsheet } from '../../lib/googleSheets';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 interface Props {
@@ -110,7 +111,10 @@ export function ExportModal({ visible, onClose, userId }: Props) {
         <View style={styles.sheet}>
           <View style={styles.handle} />
 
-          <Text style={styles.title}>📊 Google Sheets 내보내기</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.lg }}>
+            <PhIcon name="table" size={22} color={Colors.primary} />
+            <Text style={[styles.title, { marginBottom: 0 }]}>Google Sheets 내보내기</Text>
+          </View>
 
           <Text style={styles.label}>내보낼 기간</Text>
           <View style={styles.monthRow}>
@@ -129,7 +133,10 @@ export function ExportModal({ visible, onClose, userId }: Props) {
 
           {sheetUrl ? (
             <View style={styles.successBox}>
-              <Text style={styles.successText}>✅ 스프레드시트 생성 완료!</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.sm }}>
+                <PhIcon name="check-circle" size={18} color={Colors.primaryDark} />
+                <Text style={[styles.successText, { marginBottom: 0 }]}>스프레드시트 생성 완료!</Text>
+              </View>
               <TouchableOpacity style={styles.openBtn} onPress={() => Linking.openURL(sheetUrl)}>
                 <Text style={styles.openBtnText}>Google Sheets에서 열기</Text>
               </TouchableOpacity>

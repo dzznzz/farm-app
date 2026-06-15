@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing } from '../../constants/theme';
 import { pageStyles, SettingField } from './shared';
 import { RegionSelectorModal } from '../modals/RegionSelectorModal';
@@ -43,7 +44,10 @@ export function ProfileEditPage({ onBack, userId }: Props) {
     <SafeAreaView style={pageStyles.container}>
       <View style={pageStyles.subHeader}>
         <TouchableOpacity onPress={onBack}><Text style={pageStyles.backBtn}>←</Text></TouchableOpacity>
-        <Text style={pageStyles.subTitle}>👤 프로필 수정</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PhIcon name="user" size={20} color={Colors.text} />
+          <Text style={pageStyles.subTitle}>프로필 수정</Text>
+        </View>
         <View style={{ width: 40 }} />
       </View>
       {loading ? (

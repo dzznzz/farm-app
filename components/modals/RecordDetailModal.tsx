@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { PhIcon } from '../ui/PhIcon';
 import { supabase } from '../../lib/supabase';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
@@ -63,9 +64,12 @@ export function RecordDetailModal({ visible, record, onClose, onDeleted, onEdit 
     );
   };
 
-  const typeLabel = record.type === 'harvest' ? '🫐 수확'
-    : record.type === 'sales' ? '💰 판매'
-    : record.otherSubType === 'gift' ? '🤝 나눔' : '🗑 폐기';
+  const typeLabel = record.type === 'harvest' ? '수확'
+    : record.type === 'sales' ? '판매'
+    : record.otherSubType === 'gift' ? '나눔' : '폐기';
+  const typeIcon = record.type === 'harvest' ? 'blueberry'
+    : record.type === 'sales' ? 'money'
+    : record.otherSubType === 'gift' ? 'handshake' : 'trash';
   const typeColor = record.type === 'harvest' ? Colors.primary
     : record.type === 'sales' ? Colors.success : Colors.danger;
 
@@ -76,7 +80,10 @@ export function RecordDetailModal({ visible, record, onClose, onDeleted, onEdit 
           <View style={styles.handle} />
 
           <View style={styles.sheetHeader}>
-            <Text style={[styles.typeBadge, { color: typeColor }]}>{typeLabel}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <PhIcon name={typeIcon as any} size={16} color={typeColor} />
+              <Text style={[styles.typeBadge, { color: typeColor }]}>{typeLabel}</Text>
+            </View>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>

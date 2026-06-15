@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { PhIcon } from '../../components/ui/PhIcon';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
@@ -16,10 +17,10 @@ import { CalendarModal } from '../../components/modals/CalendarModal';
 
 type TabType = 'harvest' | 'sales' | 'other';
 
-const TABS: { key: TabType; label: string; color: string }[] = [
-  { key: 'harvest', label: '🫐 수확', color: Colors.primary },
-  { key: 'sales', label: '💰 판매', color: Colors.success },
-  { key: 'other', label: '📋 기타', color: Colors.danger },
+const TABS: { key: TabType; label: string; icon: string; color: string }[] = [
+  { key: 'harvest', label: '수확', icon: 'blueberry', color: Colors.primary },
+  { key: 'sales', label: '판매', icon: 'money', color: Colors.success },
+  { key: 'other', label: '기타', icon: 'clipboard-text', color: Colors.danger },
 ];
 
 function addDays(dateStr: string, delta: number) {
@@ -273,9 +274,12 @@ export default function InputScreen() {
             <TouchableOpacity key={t.key}
               style={[styles.tabBtn, tab === t.key && styles.tabActive]}
               onPress={() => setTab(t.key)}>
-              <Text style={[styles.tabText, tab === t.key && { color: t.color, fontWeight: '700' }]}>
-                {t.label}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <PhIcon name={t.icon as any} size={14} color={tab === t.key ? t.color : Colors.textSub} />
+                <Text style={[styles.tabText, tab === t.key && { color: t.color, fontWeight: '700' }]}>
+                  {t.label}
+                </Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -287,9 +291,12 @@ export default function InputScreen() {
         <ScrollView style={styles.scroll} contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}>
           {(tab === 'sales' ? saleGroups.length === 0 : grouped.length === 0) ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyEmoji}>
-                {tab === 'harvest' ? '🫐' : tab === 'sales' ? '💰' : '📋'}
-              </Text>
+              <PhIcon
+                name={tab === 'harvest' ? 'blueberry' : tab === 'sales' ? 'money' : 'clipboard-text'}
+                size={48}
+                color={Colors.textLight}
+                style={{ marginBottom: 12 }}
+              />
               <Text style={styles.emptyText}>
                 {formatDisplayDate(date)} {tab === 'harvest' ? '수확' : tab === 'sales' ? '판매' : '기타'} 기록이 없습니다
               </Text>
@@ -331,7 +338,7 @@ export default function InputScreen() {
                         onPress={() => handleDeleteGroup(sg.records)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Text style={styles.deleteGroupBtn}>🗑</Text>
+                        <PhIcon name="trash" size={18} color={Colors.danger} />
                       </TouchableOpacity>
                     </View>
                     <View style={styles.groupSubHeader}>
@@ -422,7 +429,7 @@ export default function InputScreen() {
                         onPress={() => handleDeleteGroup(group.allRecords)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Text style={styles.deleteGroupBtn}>🗑</Text>
+                        <PhIcon name="trash" size={18} color={Colors.danger} />
                       </TouchableOpacity>
                     </View>
                     <View style={styles.groupSubHeader}>
@@ -585,7 +592,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 13, fontWeight: '600', color: Colors.textSub },
   scroll: { flex: 1 },
   empty: { alignItems: 'center', marginTop: 60 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
+  emptyEmoji: {},
   emptyText: { ...Typography.body, color: Colors.textSub, textAlign: 'center' },
   emptySubText: { ...Typography.caption, marginTop: 6, color: Colors.textLight },
   // Group card

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { CalendarModal } from './CalendarModal';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { DisplayRecord } from './RecordDetailModal';
 
@@ -891,7 +892,7 @@ export function InputFormModal({
           disabled={loadingHarvest}
         >
           <Text style={styles.harvestImportText}>
-            {loadingHarvest ? '불러오는 중...' : '📥 수확데이터 가져오기'}
+            {loadingHarvest ? '불러오는 중...' : '수확데이터 가져오기'}
           </Text>
         </TouchableOpacity>
       )}
@@ -924,7 +925,7 @@ export function InputFormModal({
               {sizeInfoData.length > 0 && (
                 <TouchableOpacity onPress={() => setShowSizeInfo(v => !v)}
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <Text style={styles.infoIcon}>ℹ</Text>
+                  <PhIcon name="info" size={16} color={Colors.textSub} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1056,7 +1057,10 @@ export function InputFormModal({
             <>
               <SectionCard label="날짜">
                 <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
-                  <Text style={styles.fieldBtnText}>📅 {date}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <PhIcon name="calendar" size={16} color={Colors.primary} />
+                    <Text style={styles.fieldBtnText}>{date}</Text>
+                  </View>
                 </TouchableOpacity>
               </SectionCard>
               <SectionCard label="농장">
@@ -1121,7 +1125,7 @@ export function InputFormModal({
                   {sizeInfoData.length > 0 && (
                     <TouchableOpacity onPress={() => setEditShowSizeInfo(v => !v)}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <Text style={styles.infoIcon}>ℹ</Text>
+                      <PhIcon name="info" size={16} color={Colors.textSub} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1226,7 +1230,10 @@ export function InputFormModal({
                     <View style={styles.stepBody}>
                       {stepId === 'date' && (
                         <TouchableOpacity style={styles.fieldBtn} onPress={() => setShowCalendar(true)}>
-                          <Text style={styles.fieldBtnText}>📅 {date}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <PhIcon name="calendar" size={16} color={Colors.primary} />
+                    <Text style={styles.fieldBtnText}>{date}</Text>
+                  </View>
                         </TouchableOpacity>
                       )}
                       {stepId === 'farm' && (

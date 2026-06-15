@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import * as Location from 'expo-location';
-import { fetchCurrentWeather, fetchWeatherByCity, getWeatherEmoji } from '../../lib/weather';
+import { fetchCurrentWeather, fetchWeatherByCity, getWeatherIconName } from '../../lib/weather';
+import { PhIcon } from '../ui/PhIcon';
 import { WeatherData } from '../../types';
 import { WeatherModal } from '../modals/WeatherModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
@@ -44,13 +45,16 @@ export function WeatherWidget() {
           <ActivityIndicator color={Colors.primary} size="small" />
         ) : weather ? (
           <View style={styles.content}>
-            <Text style={styles.emoji}>{getWeatherEmoji(weather.icon)}</Text>
+            <PhIcon name={getWeatherIconName(weather.icon) as any} size={36} color={Colors.primary} />
             <View style={styles.info}>
               <View style={styles.tempRow}>
                 <Text style={styles.temp}>{weather.temp}°C</Text>
                 <Text style={styles.desc}>{weather.description}</Text>
               </View>
-              <Text style={styles.city}>📍 {city}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                <PhIcon name="map-pin" size={12} color={Colors.textSub} />
+                <Text style={styles.city}>{city}</Text>
+              </View>
               <Text style={styles.meta}>습도 {weather.humidity}% · 바람 {weather.wind_speed}km/h</Text>
             </View>
             <Text style={styles.arrow}>›</Text>
@@ -79,7 +83,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   content: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  emoji: { fontSize: 36 },
+  emoji: {},
   info: { flex: 1 },
   tempRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
   temp: { fontSize: 22, fontWeight: '800', color: Colors.primaryDark },

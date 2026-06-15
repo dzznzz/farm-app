@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendChatMessage, getDailyUsage, ChatMessage } from '../../lib/gemini';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
+import { PhIcon } from '../ui/PhIcon';
 import { pageStyles } from './shared';
 
 const QUICK_QUESTIONS = [
@@ -77,7 +78,10 @@ export function ChatbotPage({ onBack, userId }: Props) {
     <SafeAreaView style={pageStyles.container}>
       <View style={pageStyles.subHeader}>
         <TouchableOpacity onPress={onBack}><Text style={pageStyles.backBtn}>←</Text></TouchableOpacity>
-        <Text style={pageStyles.subTitle}>🤖 농업 AI 챗봇</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PhIcon name="robot" size={20} color={Colors.text} />
+          <Text style={pageStyles.subTitle}>농업 AI 챗봇</Text>
+        </View>
         <View style={{ alignItems: 'flex-end', width: 50 }}>
           <Text style={styles.usageText}>{remaining !== null ? `${remaining}/50` : ''}</Text>
           {messages.length > 0 && (
@@ -96,7 +100,7 @@ export function ChatbotPage({ onBack, userId }: Props) {
           ListHeaderComponent={
             messages.length === 0 ? (
               <View style={styles.welcomeBox}>
-                <Text style={styles.welcomeEmoji}>🌾</Text>
+                <PhIcon name="plant" size={48} color={Colors.primary} style={{ marginBottom: Spacing.md }} />
                 <Text style={styles.welcomeText}>농업 전문 AI입니다.{'\n'}궁금한 것을 물어보세요!</Text>
                 <View style={styles.quickBtns}>
                   {QUICK_QUESTIONS.map((q) => (
@@ -149,7 +153,7 @@ const styles = StyleSheet.create({
   usageText: { fontSize: 12, color: Colors.textSub, fontWeight: '500', width: 40, textAlign: 'right' },
   chatList: { padding: Spacing.md, flexGrow: 1 },
   welcomeBox: { alignItems: 'center', paddingVertical: Spacing.xl },
-  welcomeEmoji: { fontSize: 48, marginBottom: Spacing.md },
+  welcomeEmoji: {},
   welcomeText: { ...Typography.body, textAlign: 'center', color: Colors.textSub, lineHeight: 24 },
   quickBtns: { marginTop: Spacing.lg, width: '100%', gap: Spacing.sm },
   quickBtn: { backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: Colors.primaryLight },

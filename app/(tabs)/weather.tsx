@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { fetchCurrentWeather, fetchWeatherByCity, getWeatherEmoji } from '../../lib/weather';
+import { fetchCurrentWeather, fetchWeatherByCity, getWeatherIconName } from '../../lib/weather';
+import { PhIcon } from '../../components/ui/PhIcon';
 import { Card } from '../../components/ui/Card';
 import { WeatherData } from '../../types';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
@@ -110,8 +111,11 @@ export default function WeatherScreen() {
             <ActivityIndicator color="#fff" style={{ marginVertical: 60 }} size="large" />
           ) : weather ? (
             <>
-              <Text style={styles.cityName}>📍 {currentCity}</Text>
-              <Text style={styles.weatherIcon}>{getWeatherEmoji(weather.icon)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <PhIcon name="map-pin" size={14} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.cityName}>{currentCity}</Text>
+              </View>
+              <PhIcon name={getWeatherIconName(weather.icon) as any} size={72} color="#fff" style={{ marginVertical: 8 }} />
               <Text style={styles.temp}>{weather.temp}°</Text>
               <Text style={styles.desc}>{weather.description}</Text>
               <View style={styles.weatherMetaRow}>
@@ -146,7 +150,7 @@ export default function WeatherScreen() {
               {weather.hourly.map((h, i) => (
                 <Card key={i} style={styles.hourlyCard}>
                   <Text style={styles.hourlyTime}>{formatHour(h.time)}</Text>
-                  <Text style={styles.hourlyIcon}>{getWeatherEmoji(h.icon)}</Text>
+                  <PhIcon name={getWeatherIconName(h.icon) as any} size={22} color={Colors.primary} style={{ marginBottom: 6 }} />
                   <Text style={styles.hourlyTemp}>{h.temp}°</Text>
                 </Card>
               ))}
@@ -157,8 +161,11 @@ export default function WeatherScreen() {
               {weather.daily.map((d, i) => (
                 <View key={i} style={[styles.dailyRow, i > 0 && styles.dailyBorder]}>
                   <Text style={styles.dailyDay}>{i === 0 ? '오늘' : formatDay(d.date)}</Text>
-                  <Text style={styles.dailyIcon}>{getWeatherEmoji(d.icon)}</Text>
-                  <Text style={styles.dailyPop}>💧 {d.pop}%</Text>
+                  <PhIcon name={getWeatherIconName(d.icon) as any} size={20} color={Colors.primary} style={{ marginRight: Spacing.sm }} />
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <PhIcon name="drop" size={13} color={Colors.textSub} />
+                    <Text style={styles.dailyPop}>{d.pop}%</Text>
+                  </View>
                   <Text style={styles.dailyTemp}>
                     <Text style={{ color: Colors.primary }}>{d.temp_max}°</Text>
                     <Text style={{ color: Colors.textSub }}> / {d.temp_min}°</Text>
@@ -193,13 +200,13 @@ export default function WeatherScreen() {
             <Card style={styles.monthlyCardBottom}>
               <Text style={[Typography.bodyBold, { marginBottom: Spacing.md }]}>농업 계절 가이드</Text>
               {[
-                { season: '봄 (3-5월)', tip: '파종 및 육묘 시기. 늦서리 주의.', emoji: '🌱' },
-                { season: '여름 (6-8월)', tip: '고온다습, 병충해 방제 집중 관리.', emoji: '☀️' },
-                { season: '가을 (9-11월)', tip: '주요 수확 시기. 건조 주의.', emoji: '🍂' },
-                { season: '겨울 (12-2월)', tip: '시설 보온 및 토양 관리 시기.', emoji: '❄️' },
+                { season: '봄 (3-5월)', tip: '파종 및 육묘 시기. 늦서리 주의.', icon: 'plant' },
+                { season: '여름 (6-8월)', tip: '고온다습, 병충해 방제 집중 관리.', icon: 'sun' },
+                { season: '가을 (9-11월)', tip: '주요 수확 시기. 건조 주의.', icon: 'leaf' },
+                { season: '겨울 (12-2월)', tip: '시설 보온 및 토양 관리 시기.', icon: 'snowflake' },
               ].map((item) => (
                 <View key={item.season} style={styles.seasonRow}>
-                  <Text style={styles.seasonEmoji}>{item.emoji}</Text>
+                  <PhIcon name={item.icon as any} size={22} color={Colors.primary} style={{ marginTop: 2 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={Typography.bodyBold}>{item.season}</Text>
                     <Text style={{ ...Typography.caption, marginTop: 2 }}>{item.tip}</Text>
@@ -284,5 +291,5 @@ const styles = StyleSheet.create({
   barFill: { height: '100%', borderRadius: Radius.full },
   monthlyTemp: { width: 40, textAlign: 'right', fontSize: 13, fontWeight: '600', color: Colors.text },
   seasonRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.sm, gap: Spacing.sm },
-  seasonEmoji: { fontSize: 22, marginTop: 2 },
+  seasonEmoji: {},
 });

@@ -4,19 +4,19 @@ const API_KEY = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY;
 const BASE_URL = 'https://api.openweathermap.org/data/2.5';
 
 const WEATHER_ICONS: Record<string, string> = {
-  '01d': '☀️', '01n': '🌙',
-  '02d': '⛅', '02n': '⛅',
-  '03d': '☁️', '03n': '☁️',
-  '04d': '☁️', '04n': '☁️',
-  '09d': '🌧️', '09n': '🌧️',
-  '10d': '🌦️', '10n': '🌦️',
-  '11d': '⛈️', '11n': '⛈️',
-  '13d': '❄️', '13n': '❄️',
-  '50d': '🌫️', '50n': '🌫️',
+  '01d': 'sun',       '01n': 'moon',
+  '02d': 'cloud-sun', '02n': 'cloud-sun',
+  '03d': 'cloud',     '03n': 'cloud',
+  '04d': 'cloud',     '04n': 'cloud',
+  '09d': 'cloud-rain','09n': 'cloud-rain',
+  '10d': 'cloud-rain','10n': 'cloud-rain',
+  '11d': 'cloud-lightning', '11n': 'cloud-lightning',
+  '13d': 'cloud-snow','13n': 'cloud-snow',
+  '50d': 'cloud-fog', '50n': 'cloud-fog',
 };
 
-export function getWeatherEmoji(icon: string): string {
-  return WEATHER_ICONS[icon] ?? '🌤️';
+export function getWeatherIconName(icon: string): string {
+  return WEATHER_ICONS[icon] ?? 'cloud-sun';
 }
 
 export async function fetchCurrentWeather(lat: number, lon: number): Promise<WeatherData> {

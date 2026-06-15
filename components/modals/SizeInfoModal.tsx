@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 export interface SizeData {
@@ -17,7 +18,10 @@ export function SizeInfoModal({ visible, onClose, sizes }: Props) {
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} onPress={onClose} activeOpacity={1}>
         <TouchableOpacity activeOpacity={1} style={styles.container}>
-          <Text style={styles.title}>블루베리 사이즈 기준 🫐</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: Spacing.md }}>
+            <PhIcon name="blueberry" size={20} color={Colors.primary} />
+            <Text style={[styles.title, { marginBottom: 0 }]}>블루베리 사이즈 기준</Text>
+          </View>
           {sizes.map((s) => (
             <View key={s.name} style={styles.row}>
               <View style={styles.badge}>
