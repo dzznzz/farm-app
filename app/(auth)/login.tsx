@@ -34,7 +34,7 @@ export default function LoginScreen() {
           colors={[Colors.primaryUltraLight, Colors.background]}
           style={styles.header}
         >
-          <PhIcon name="blueberry" size={64} color={Colors.primary} />
+          <PhIcon name="blueberry" size={64} color={Colors.primaryDark} />
           <Text style={styles.appName}>농장관리</Text>
           <Text style={styles.tagline}>스마트한 농장 관리의 시작</Text>
         </LinearGradient>

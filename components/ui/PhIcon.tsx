@@ -3,6 +3,7 @@ import {
   Bell,
   Calendar,
   ChartBar,
+  ChartLineUp,
   ChatCircle, ChatCircleDots,
   CheckCircle,
   Cherries,
@@ -24,6 +25,7 @@ import {
   MapPin,
   MapTrifold,
   Money,
+  MoneyWavy,
   Monitor,
   Moon,
   Package,
@@ -46,6 +48,7 @@ const ICONS = {
   'bell': Bell,
   'calendar': Calendar,
   'chart-bar': ChartBar,
+  'chart-line-up': ChartLineUp,
   'chat-circle': ChatCircle,
   'chat-circle-dots': ChatCircleDots,
   'check-circle': CheckCircle,
@@ -71,7 +74,7 @@ const ICONS = {
   'leaf': Leaf,
   'map-pin': MapPin,
   'map-trifold': MapTrifold,
-  'money': Money,
+  'money': MoneyWavy,
   'monitor': Monitor,
   'moon': Moon,
   'package': Package,
@@ -99,12 +102,19 @@ interface PhIconProps {
 }
 
 export function PhIcon({ name, size = 24, color = '#000000', weight = 'regular', style }: PhIconProps) {
-  const icon = name === 'blueberry'
-    ? <Cherries size={size} color={color} weight="duotone" />
-    : (() => {
+    let icon = null;
+    switch (name) {
+      case 'blueberry':
+        icon = <Cherries size={size} color={color} weight="duotone" />;
+        break;
+      case 'package':
+        icon = <Package size={size} color={color} weight="fill" />;
+        break;
+      default: {
         const C = ICONS[name as keyof typeof ICONS];
-        return C ? <C size={size} color={color} weight={weight} /> : null;
-      })();
+        icon = C ? <C size={size} color={color} weight={weight} /> : null;
+      } 
+    };
 
   if (!icon) return null;
   if (style) return <View style={style}>{icon}</View>;

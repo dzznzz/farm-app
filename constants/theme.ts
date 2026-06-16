@@ -15,6 +15,7 @@ export const Colors = {
   danger: '#E07070',
   dangerLight: '#FDEAEA',
   border: '#EBEBF5',
+  yellow: '#DAB910',
   shadow: 'rgba(155, 142, 196, 0.15)',
 };
 

@@ -98,11 +98,11 @@ export default function HomeScreen() {
     : '수고하셨어요';
 
   const QUICK_MENUS = [
-    { iconName: 'blueberry', label: '수확 입력', onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'harvest' } } as any) },
-    { iconName: 'money', label: '판매 입력', onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'sales' } } as any) },
-    { iconName: 'chart-bar', label: '통계', onPress: () => router.push('/(tabs)/statistics' as any) },
-    { iconName: 'phone', label: '연락처', onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'contacts' } } as any) },
-    { iconName: 'robot', label: '챗봇', onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'chatbot' } } as any) },
+    { iconName: 'blueberry', label: '수확 입력', color: Colors.primary, weight: "duotone", onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'harvest' } } as any) },
+    { iconName: 'money', label: '판매 입력', color: Colors.success, weight: "duotone", onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'sales' } } as any) },
+    { iconName: 'chart-line-up', label: '통계', color: Colors.danger, weight: "duotone", onPress: () => router.push('/(tabs)/statistics' as any) },
+    { iconName: 'phone', label: '연락처', color: Colors.text, onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'contacts' } } as any) },
+    { iconName: 'robot', label: '챗봇', color: Colors.yellow, onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'chatbot' } } as any) },
   ];
 
   const doneCount = todos.filter((t) => t.completed).length;
@@ -234,6 +234,7 @@ export default function HomeScreen() {
                 changeRate={summary.changeRateHarvestWeek}
                 compareLabel="저번 주 대비"
                 icon="package"
+                color={Colors.danger}
               />
             </TouchableOpacity>
             <View style={{ width: Spacing.sm }} />
@@ -265,7 +266,7 @@ export default function HomeScreen() {
               {QUICK_MENUS.map((item) => (
                 <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress} style={styles.quickBtnWeb}>
                   <Card style={styles.quickCardWeb}>
-                    <PhIcon name={item.iconName as any} size={26} color={Colors.primary} style={{ marginBottom: 6 }} />
+                    <PhIcon name={item.iconName as any} size={26} color={item.color} style={{ marginBottom: 6 }} />
                     <Text style={styles.quickLabel}>{item.label}</Text>
                   </Card>
                 </TouchableOpacity>
@@ -276,7 +277,7 @@ export default function HomeScreen() {
               {QUICK_MENUS.map((item) => (
                 <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress}>
                   <Card style={styles.quickCard}>
-                    <PhIcon name={item.iconName as any} size={26} color={Colors.primary} style={{ marginBottom: 6 }} />
+                    <PhIcon name={item.iconName as any} size={26} color={item.color} style={{ marginBottom: 6 }} weight={item.weight} />
                     <Text style={styles.quickLabel}>{item.label}</Text>
                   </Card>
                 </TouchableOpacity>
