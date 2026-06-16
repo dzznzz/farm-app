@@ -19,7 +19,7 @@ type TabType = 'harvest' | 'sales' | 'other';
 
 const TABS: { key: TabType; label: string; icon: string; color: string }[] = [
   { key: 'harvest', label: '수확', icon: 'blueberry', color: Colors.primary },
-  { key: 'sales', label: '판매', icon: 'money', color: Colors.success },
+  { key: 'sales', label: '판매', icon: 'money-wavy', color: Colors.success },
   { key: 'other', label: '기타', icon: 'clipboard-text', color: Colors.danger },
 ];
 
@@ -292,7 +292,7 @@ export default function InputScreen() {
           {(tab === 'sales' ? saleGroups.length === 0 : grouped.length === 0) ? (
             <View style={styles.empty}>
               <PhIcon
-                name={tab === 'harvest' ? 'blueberry' : tab === 'sales' ? 'money' : 'clipboard-text'}
+                name={tab === 'harvest' ? 'blueberry' : tab === 'sales' ? 'money-wavy' : 'clipboard-text'}
                 size={48}
                 color={Colors.textLight}
                 style={{ marginBottom: 12 }}
@@ -434,6 +434,11 @@ export default function InputScreen() {
                     </View>
                     <View style={styles.groupSubHeader}>
                       <Text style={styles.groupCrop}>{group.cropType || '(작물 미입력)'}</Text>
+                      {tab === 'other' && (() => {
+                        const recipients = Array.from(new Set(group.allRecords.map(r => r.recipient).filter(Boolean)));
+                        if (recipients.length === 0) return null;
+                        return <Text style={styles.buyerText}>받는 분: {recipients.join(', ')}</Text>;
+                      })()}
                     </View>
 
                     <View style={styles.divider} />

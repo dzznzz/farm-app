@@ -99,10 +99,10 @@ export default function HomeScreen() {
 
   const QUICK_MENUS = [
     { iconName: 'blueberry', label: '수확 입력', color: Colors.primary, weight: "duotone", onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'harvest' } } as any) },
-    { iconName: 'money', label: '판매 입력', color: Colors.success, weight: "duotone", onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'sales' } } as any) },
-    { iconName: 'chart-line-up', label: '통계', color: Colors.danger, weight: "duotone", onPress: () => router.push('/(tabs)/statistics' as any) },
-    { iconName: 'phone', label: '연락처', color: Colors.text, onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'contacts' } } as any) },
-    { iconName: 'robot', label: '챗봇', color: Colors.yellow, onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'chatbot' } } as any) },
+    { iconName: 'money-wavy', label: '판매 입력', color: Colors.success, weight: "duotone", onPress: () => router.push({ pathname: '/(tabs)/input', params: { tab: 'sales' } } as any) },
+    { iconName: 'chart-line-up', label: '통계', color: Colors.danger, weight: "fill", onPress: () => router.push('/(tabs)/statistics' as any) },
+    { iconName: 'phone', label: '연락처', color: Colors.yellow, weight: "fill", onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'contacts' } } as any) },
+    { iconName: 'robot', label: '챗봇', color: Colors.text, weight: "duotone", onPress: () => router.push({ pathname: '/(tabs)/more', params: { page: 'chatbot' } } as any) },
   ];
 
   const doneCount = todos.filter((t) => t.completed).length;
@@ -124,10 +124,13 @@ export default function HomeScreen() {
         <LinearGradient colors={[Colors.primaryUltraLight, Colors.background]} style={styles.headerGradient}>
           <View style={styles.header}>
             <View>
-              <Text style={styles.greeting}>{greeting}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 3 }}>
+                <Text style={styles.greeting}>{greeting}</Text>
+                <PhIcon name="hand-waving" size={15} color={Colors.yellow} />
+              </View>
               <Text style={styles.name}>{profile?.name ?? '농장주'}님</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 3 }}>
-                <PhIcon name="map-pin" size={12} color={Colors.textSub} />
+                <PhIcon name="map-pin-area" size={16} color={Colors.danger} weight="duotone" />
                 <Text style={styles.region}>{profile?.region ?? '지역 미설정'}</Text>
               </View>
             </View>
@@ -220,7 +223,7 @@ export default function HomeScreen() {
                 unit="만원"
                 changeRate={summary.changeRateRevenueToday}
                 compareLabel="어제 대비"
-                icon="money"
+                icon="money-wavy"
                 color={Colors.success}
               />
             </TouchableOpacity>
@@ -266,7 +269,7 @@ export default function HomeScreen() {
               {QUICK_MENUS.map((item) => (
                 <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress} style={styles.quickBtnWeb}>
                   <Card style={styles.quickCardWeb}>
-                    <PhIcon name={item.iconName as any} size={26} color={item.color} style={{ marginBottom: 6 }} />
+                    <PhIcon name={item.iconName as any} size={26} color={item.color} style={{ marginBottom: 6 }} weight={item.weight} />
                     <Text style={styles.quickLabel}>{item.label}</Text>
                   </Card>
                 </TouchableOpacity>

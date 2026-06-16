@@ -77,8 +77,8 @@ export default function MoreScreen() {
 
         <Card style={styles.menuCardSecond}>
           {[
-            { icon: 'gear', label: '농장 설정', desc: '농장 및 작물 관리', page: 'farmSettings' as PageType },
-            { icon: 'user', label: '프로필 수정', desc: '계정 정보 변경', page: 'profileEdit' as PageType },
+            { icon: 'farm', label: '농장 설정', desc: '농장 및 작물 관리', page: 'farmSettings' as PageType },
+            { icon: 'user-circle-gear', label: '프로필 수정', desc: '계정 정보 변경', page: 'profileEdit' as PageType },
             { icon: 'device-mobile', label: '연락처 관리', desc: '거래처 및 지인 연락처', page: 'contacts' as PageType },
           ].map((item, i) => (
             <TouchableOpacity

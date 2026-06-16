@@ -68,7 +68,7 @@ export function RecordDetailModal({ visible, record, onClose, onDeleted, onEdit 
     : record.type === 'sales' ? '판매'
     : record.otherSubType === 'gift' ? '나눔' : '폐기';
   const typeIcon = record.type === 'harvest' ? 'blueberry'
-    : record.type === 'sales' ? 'money'
+    : record.type === 'sales' ? 'money-wavy'
     : record.otherSubType === 'gift' ? 'handshake' : 'trash';
   const typeColor = record.type === 'harvest' ? Colors.primary
     : record.type === 'sales' ? Colors.success : Colors.danger;

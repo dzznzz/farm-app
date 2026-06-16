@@ -17,12 +17,15 @@ import {
   DeviceMobile,
   DotsThree,
   Drop,
+  Farm,
   Gear,
   Handshake,
+  HandWaving,
   House,
   Info,
   Leaf,
   MapPin,
+  MapPinArea,
   MapTrifold,
   Money,
   MoneyWavy,
@@ -40,6 +43,7 @@ import {
   Trash,
   TrendUp,
   User,
+  UserCircleGear,
 } from 'phosphor-react-native';
 
 type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
@@ -67,14 +71,18 @@ const ICONS = {
   'device-mobile': DeviceMobile,
   'dots-three': DotsThree,
   'drop': Drop,
+  'farm': Farm,
   'gear': Gear,
   'handshake': Handshake,
+  'hand-waving': HandWaving,
   'house': House,
   'info': Info,
   'leaf': Leaf,
   'map-pin': MapPin,
+  'map-pin-area': MapPinArea,
   'map-trifold': MapTrifold,
-  'money': MoneyWavy,
+  'money': Money,
+  'money-wavy': MoneyWavy,
   'monitor': Monitor,
   'moon': Moon,
   'package': Package,
@@ -89,6 +97,7 @@ const ICONS = {
   'trash': Trash,
   'trend-up': TrendUp,
   'user': User,
+  'user-circle-gear': UserCircleGear,
 } as const;
 
 export type PhIconName = keyof typeof ICONS | 'blueberry';

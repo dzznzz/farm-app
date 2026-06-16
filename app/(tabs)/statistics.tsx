@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { PieChart, LineChart } from 'react-native-gifted-charts';
+import Svg, { Circle, G, Path, Line as SvgLine, Text as SvgText } from 'react-native-svg';
 import { useAuth } from '../../hooks/useAuth';
 import {
   fetchPeriodSummaryForRange, fetchStatsForRange,
@@ -38,6 +39,7 @@ const COMPARE_LABELS: Record<PeriodType, { revenue: string; harvest: string }> =
 };
 
 const DONUT_COLORS = ['#7C5CBF', '#A07BD4', '#5B8DD9', '#7EC8A0', '#E89F5D', '#D96B6B'];
+const DONUT_OTHERS_COLOR = '#ccc';
 
 // ── 선택 날짜 + 기간 → 범위 계산 ──
 interface DateRange {
@@ -332,11 +334,17 @@ export default function StatisticsScreen() {
       : donutData.byVarietySize)
     : [];
   const donutTotal = donutItems.reduce((s, i) => s + i.harvest, 0);
-  const pieData = donutItems.slice(0, 6).filter(i => i.harvest > 0).map((item, i) => ({
+  const topItems = donutItems.slice(0, 6).filter(i => i.harvest > 0);
+  const pieData = topItems.map((item, i) => ({
     value: item.harvest,
     color: DONUT_COLORS[i % DONUT_COLORS.length],
     label: item.key,
   }));
+  // 상위 6개 외 나머지는 "기타"로 묶어 도넛/표를 100%로 채움
+  const othersValue = donutTotal - topItems.reduce((s, i) => s + i.harvest, 0);
+  if (othersValue > 0.0001) {
+    pieData.push({ value: othersValue, color: DONUT_OTHERS_COLOR, label: '기타' });
+  }
 
   // 도넛 회전 애니메이션
   useEffect(() => {
@@ -348,7 +356,7 @@ export default function StatisticsScreen() {
       toValue: 1,
       duration: 500,
       easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start(({ finished }) => { if (finished) setIsSpinning(false); });
   }, [donutTab, donutData]);
 
@@ -436,7 +444,7 @@ export default function StatisticsScreen() {
                 color={Colors.primary}
               />
               <SummaryCard
-                icon="money" title="판매량"
+                icon="money-wavy" title="판매량"
                 value={cur.sales.toLocaleString()} unit="kg"
                 changeRate={salesRate} compareLabel={salesLabel}
                 color={Colors.primaryDark}
@@ -532,9 +540,37 @@ export default function StatisticsScreen() {
                   />
                 </Animated.View>
               ) : (
-                <View style={styles.webChartFallback}>
-                  <Text style={styles.webChartFallbackText}>{donutTotal.toLocaleString()} kg</Text>
-                  <Text style={styles.webChartFallbackSub}>차트는 앱에서 확인</Text>
+                <View style={styles.webDonutWrap}>
+                  {/* 정적 -90° 회전으로 12시 방향에서 시작 (origin prop은 web DOM 에러 발생) */}
+                  <Animated.View style={{ transform: [{ rotate: donutSpin }, { rotate: '-90deg' }] }}>
+                    <Svg width={200} height={200}>
+                      <G>
+                        {(() => {
+                          const r = 80;
+                          const c = 2 * Math.PI * r;
+                          const pieSum = pieData.reduce((s, p) => s + p.value, 0);
+                          let acc = 0;
+                          return pieData.map((item, i) => {
+                            const frac = pieSum > 0 ? item.value / pieSum : 0;
+                            const seg = (
+                              <Circle
+                                key={i} cx={100} cy={100} r={r} fill="none"
+                                stroke={item.color} strokeWidth={40}
+                                strokeDasharray={`${frac * c} ${c}`}
+                                strokeDashoffset={-acc * c}
+                              />
+                            );
+                            acc += frac;
+                            return seg;
+                          });
+                        })()}
+                      </G>
+                    </Svg>
+                  </Animated.View>
+                  <View style={styles.webDonutCenter} pointerEvents="none">
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.textSub }}>kg</Text>
+                  </View>
                 </View>
               )}
               <View style={styles.donutTable}>
@@ -686,33 +722,78 @@ export default function StatisticsScreen() {
               ))}
             </ScrollView>
             <View onLayout={(e) => setPriceChartWidth(e.nativeEvent.layout.width)}>
-              {priceChartData.length > 0 && priceChartWidth > 0 && Platform.OS !== 'web' && (
-                <LineChart
-                  data={priceChartData}
-                  thickness={2.5}
-                  color={Colors.primary}
-                  dataPointsColor={Colors.primaryDark}
-                  curved areaChart
-                  startFillColor={Colors.primary}
-                  startOpacity={0.15}
-                  endFillColor={Colors.primary}
-                  endOpacity={0.01}
-                  hideRules
-                  xAxisThickness={1} xAxisColor={Colors.border}
-                  yAxisThickness={0}
-                  yAxisTextStyle={{ color: Colors.textSub, fontSize: 9 }}
-                  xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
-                  yAxisLabelWidth={44}
-                  noOfSections={4}
-                  maxValue={priceMax * 1.25}
-                  width={priceChartWidth - 44}
-                  spacing={priceSpacing}
-                  initialSpacing={20}
-                  textColor={Colors.text}
-                  textFontSize={9}
-                  textShiftY={-6}
-                  isAnimated animationDuration={500}
-                />
+              {priceChartData.length > 0 && priceChartWidth > 0 && (
+                Platform.OS !== 'web' ? (
+                  <LineChart
+                    data={priceChartData}
+                    thickness={2.5}
+                    color={Colors.primary}
+                    dataPointsColor={Colors.primaryDark}
+                    curved areaChart
+                    startFillColor={Colors.primary}
+                    startOpacity={0.15}
+                    endFillColor={Colors.primary}
+                    endOpacity={0.01}
+                    hideRules
+                    xAxisThickness={1} xAxisColor={Colors.border}
+                    yAxisThickness={0}
+                    yAxisTextStyle={{ color: Colors.textSub, fontSize: 9 }}
+                    xAxisLabelTextStyle={{ color: Colors.textSub, fontSize: 9 }}
+                    yAxisLabelWidth={44}
+                    noOfSections={4}
+                    maxValue={priceMax * 1.25}
+                    width={priceChartWidth - 44}
+                    spacing={priceSpacing}
+                    initialSpacing={20}
+                    textColor={Colors.text}
+                    textFontSize={9}
+                    textShiftY={-6}
+                    isAnimated animationDuration={500}
+                  />
+                ) : (() => {
+                  const H = 180, padL = 48, padR = 14, padT = 18, padB = 26;
+                  const plotW = priceChartWidth - padL - padR;
+                  const plotH = H - padT - padB;
+                  const maxV = priceMax * 1.25;
+                  const n = priceChartData.length;
+                  const xAt = (i: number) => (n === 1 ? padL + plotW / 2 : padL + (i / (n - 1)) * plotW);
+                  const yAt = (v: number) => padT + (1 - v / maxV) * plotH;
+                  const linePath = priceChartData
+                    .map((d, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i)} ${yAt(d.value)}`)
+                    .join(' ');
+                  const areaPath = `${linePath} L ${xAt(n - 1)} ${padT + plotH} L ${xAt(0)} ${padT + plotH} Z`;
+                  const sections = 4;
+                  return (
+                    <Svg width={priceChartWidth} height={H}>
+                      {Array.from({ length: sections + 1 }).map((_, s) => {
+                        const v = (maxV / sections) * s;
+                        const y = yAt(v);
+                        return (
+                          <G key={s}>
+                            <SvgLine x1={padL} y1={y} x2={priceChartWidth - padR} y2={y}
+                              stroke={Colors.border} strokeWidth={s === 0 ? 1 : 0.5} />
+                            <SvgText x={padL - 6} y={y + 3} fontSize={9} fill={Colors.textSub} textAnchor="end">
+                              {Math.round(v).toLocaleString()}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                      <Path d={areaPath} fill={Colors.primary} fillOpacity={0.12} />
+                      <Path d={linePath} stroke={Colors.primary} strokeWidth={2.5} fill="none" />
+                      {priceChartData.map((d, i) => (
+                        <G key={i}>
+                          <Circle cx={xAt(i)} cy={yAt(d.value)} r={3.5} fill={Colors.primaryDark} />
+                          <SvgText x={xAt(i)} y={yAt(d.value) - 8} fontSize={9} fill={Colors.text} textAnchor="middle">
+                            {d.value.toLocaleString()}
+                          </SvgText>
+                          <SvgText x={xAt(i)} y={H - 8} fontSize={9} fill={Colors.textSub} textAnchor="middle">
+                            {d.label}
+                          </SvgText>
+                        </G>
+                      ))}
+                    </Svg>
+                  );
+                })()
               )}
             </View>
           </Card>
@@ -809,9 +890,8 @@ const styles = StyleSheet.create({
   donutTableValue: { width: 76, fontSize: 13, fontWeight: '700', color: Colors.primaryDark, textAlign: 'right' },
   donutTablePct: { width: 50, fontSize: 12, color: Colors.textSub, textAlign: 'right', fontWeight: '600' },
   emptyChart: { alignItems: 'center', paddingVertical: 32 },
-  webChartFallback: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, width: 200 },
-  webChartFallbackText: { fontSize: 22, fontWeight: '700', color: Colors.primary },
-  webChartFallbackSub: { fontSize: 12, color: Colors.textSub, marginTop: 4 },
+  webDonutWrap: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
+  webDonutCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   emptyText: { ...Typography.body, color: Colors.textSub },
   emptySubText: { ...Typography.caption, marginTop: 4, color: Colors.textLight },
   compareCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
