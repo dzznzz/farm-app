@@ -4,6 +4,7 @@ import {
   Modal, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { listCodes, listVarietiesByCropName, listSizesByCropName } from '../../lib/commonCode';
 import { CalendarModal } from './CalendarModal';
 import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
@@ -341,6 +342,8 @@ export function InputFormModal({
   const [note, setNote] = useState('');
 
   // DB options
+  const [cropOptions, setCropOptions] = useState<string[]>([]);
+  const [showCropInput, setShowCropInput] = useState(false);
   const [varieties, setVarieties] = useState<string[]>([]);
   const [sizeOptions, setSizeOptions] = useState<string[]>(BLUEBERRY_SIZES);
   const [sizeInfoData, setSizeInfoData] = useState<SizeInfo[]>([]);
@@ -356,6 +359,7 @@ export function InputFormModal({
     setFarmId(pFarm?.id ?? '');
     setCropType(pFarm?.crop_type ?? '블루베리');
     setOtherType('gift'); setEntries([]); setOriginalEntryIds([]);
+    setShowCropInput(false);
     setNewVariety(''); setShowVarietyInput(false); setShowSizeInfo(false);
     setSizeModalVisible(false); setSizeModalTarget(''); setEntryError('');
     setEditVariety(''); setShowEditVarietyInput(false); setEditSize(''); setEditCustomSizeMode(false);
@@ -448,9 +452,10 @@ export function InputFormModal({
 
   useEffect(() => {
     if (!visible) return;
-    supabase.from('harvest_units').select('name').order('sort_order').then(({ data }) => {
-      if (data?.length) setUnitOptions(data.map((u) => u.name));
+    listCodes('unit').then((rows) => {
+      if (rows.length) setUnitOptions(rows.map((u) => u.name));
     });
+    listCodes('crop').then((rows) => setCropOptions(rows.map((c) => c.name)));
   }, [visible]);
 
   useEffect(() => {
@@ -467,17 +472,17 @@ export function InputFormModal({
 
   useEffect(() => {
     if (!cropType) return;
-    supabase.from('varieties_master').select('name').eq('crop_type', cropType).order('sort_order')
-      .then(({ data }) => {
-        const list = data?.length ? data.map((v: any) => v.name) : [];
+    listVarietiesByCropName(cropType)
+      .then((rows) => {
+        const list = rows.map((v) => v.name);
         setVarieties(list);
         if (editVariety && !list.includes(editVariety)) setShowEditVarietyInput(true);
       });
-    supabase.from('sizes_master').select('name, range_info').eq('crop_type', cropType).order('sort_order')
-      .then(({ data }) => {
-        const opts = data?.length ? data.map((s: any) => s.name) : BLUEBERRY_SIZES;
+    listSizesByCropName(cropType)
+      .then((rows) => {
+        const opts = rows.length ? rows.map((s) => s.name) : BLUEBERRY_SIZES;
         setSizeOptions(opts);
-        setSizeInfoData(data?.length ? data.map((s: any) => ({ name: s.name, range: s.range_info ?? '' })) : []);
+        setSizeInfoData(rows.length ? rows.map((s) => ({ name: s.name, range: s.info ?? '' })) : []);
         if (isEdit && editRecord?.size && !opts.includes(editRecord.size)) setEditCustomSizeMode(true);
       });
   }, [cropType]);
@@ -789,6 +794,33 @@ export function InputFormModal({
   const allStepsDone = activeStep >= totalSteps;
   const currentStepDisplay = Math.min(activeStep + 1, totalSteps);
 
+  // 작물 선택: 공통코드에 등록된 작물을 칩으로 고르거나 직접 입력.
+  // cropType 이 공통코드 목록에 없으면(기존 레코드 등) 자동으로 직접 입력 모드.
+  const cropIsCustom = showCropInput || (!!cropType && cropOptions.length > 0 && !cropOptions.includes(cropType));
+  const CropField = (onSubmit?: () => void) => (
+    <>
+      <View style={styles.chipRow}>
+        {cropOptions.map((c) => (
+          <TouchableOpacity key={c}
+            style={[styles.chip, !cropIsCustom && cropType === c && styles.chipActive]}
+            onPress={() => { setShowCropInput(false); setCropType(c); }}>
+            <Text style={[styles.chipText, !cropIsCustom && cropType === c && styles.chipTextActive]}>{c}</Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          style={[styles.chip, styles.sizeChipAction, cropIsCustom && styles.chipActive]}
+          onPress={() => { setShowCropInput(true); setCropType(''); }}>
+          <Text style={[styles.chipText, cropIsCustom && styles.chipTextActive]}>직접 입력</Text>
+        </TouchableOpacity>
+      </View>
+      {(cropIsCustom || cropOptions.length === 0) && (
+        <TextInput style={[styles.input, { marginTop: 6 }]} value={cropType} onChangeText={setCropType}
+          placeholder="예) 블루베리, 딸기" placeholderTextColor={Colors.textLight}
+          returnKeyType="done" onSubmitEditing={onSubmit} />
+      )}
+    </>
+  );
+
   const EntriesContent = () => {
     const varietyGroups: { variety: string; indices: number[] }[] = [];
     entries.forEach((e, i) => {
@@ -1083,8 +1115,7 @@ export function InputFormModal({
                 )}
               </SectionCard>
               <SectionCard label="작물">
-                <TextInput style={styles.input} value={cropType} onChangeText={setCropType}
-                  placeholder="예) 블루베리, 딸기" placeholderTextColor={Colors.textLight} />
+                {CropField()}
               </SectionCard>
               {tab === 'other' && (
                 <SectionCard label="구분">
@@ -1285,12 +1316,7 @@ export function InputFormModal({
                           )}
                         </>
                       )}
-                      {stepId === 'crop' && (
-                        <TextInput style={styles.input} value={cropType} onChangeText={setCropType}
-                          placeholder="예) 블루베리, 딸기" placeholderTextColor={Colors.textLight}
-                          returnKeyType="done"
-                          onSubmitEditing={() => { if (valid && isActiveStep) advanceStep(); }} />
-                      )}
+                      {stepId === 'crop' && CropField(() => { if (valid && isActiveStep) advanceStep(); })}
                       {stepId === 'entries' && EntriesContent()}
 
                       {isActiveStep && !allStepsDone && (

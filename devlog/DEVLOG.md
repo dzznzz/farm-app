@@ -15,6 +15,71 @@
 
 ---
 
+## 2026-06-17 — 13차 작업 (통계 UI 개선 + 코드 테이블 common_code 통합)
+
+### A. 통계 UI 개선 (TO-BE 로드맵 1·2·3)
+
+추가 패키지 없이 RN/Expo 내장 API(`Animated`, `RefreshControl`)만 사용.
+
+**1. 숫자 카운트업 애니메이션**
+- `SummaryCard`(수확량·판매량·매출·순수익)의 값이 0 → 실제 값까지 800ms 동안 또르륵 증가.
+- `useCountUp` 훅: 표시 문자열(`"1,234"`, `"12.5"`)을 숫자로 파싱 → 원래 포맷(천 단위 구분/소수 자릿수) 유지하며 애니메이션. 값이 바뀌면 현재 값에서 새 목표로 부드럽게 재시작.
+
+**2. 스켈레톤 로더 (shimmer)**
+- 신규 `components/ui/Skeleton.tsx` — opacity pulse 기반 회색 자리표시 블록 + `SummaryCardSkeleton`(2×2 그리드) / `BarChartSkeleton`.
+- 통계 화면의 요약 카드·막대 차트 로딩을 기존 `ActivityIndicator`(스피너)에서 실제 레이아웃 모양의 스켈레톤으로 교체.
+
+**3. Pull-to-refresh**
+- 통계·입력 화면 `ScrollView`에 `RefreshControl`(primary 색) 추가.
+- 입력 화면은 새로고침 중 전체 스피너로 전환되지 않도록 `loading && !refreshing` 가드 → 당기는 동안 리스트 유지.
+
+### B. 분리된 코드 테이블 → `common_code` 단일 테이블 통합
+
+기존 5개 테이블(`crop_types` / `varieties_master` / `sizes_master` / `harvest_units` / `expense_types`)을 하나의 `common_code`로 합침.
+
+**설계**
+- `main_code`: 분류(`crop` | `vari` | `size` | `unit` | `exps`)
+- `desc_code`: 분류 내 코드. `(main_code, desc_code)` 자연키(UNIQUE), 0-패딩 3자리(`001`..)
+- `hpos_main_code` / `hpos_desc_code`: 부모 코드. 품종·사이즈는 부모가 작물 → `hpos_main_code='crop'`, `hpos_desc_code=작물 desc_code`
+- `info`: 사이즈의 `range_info` 보관
+- 레코드(`harvest_records` 등)·`farms`는 작물·품종·사이즈·단위를 **이름(text)** 으로 저장(FK 아님) → 저장 구조는 그대로, `common_code`는 드롭다운 옵션 출처로만 사용.
+
+**초안 SQL 버그 3건 교정**
+- `'00'+sort_order` → Postgres `+`는 숫자 연산이라 `text + int` 에러. `lpad(... ::text, 3, '0')`로 교체.
+- 모든 작물이 `desc_code='001'`로 충돌 → `row_number()` 기반 고유 코드 부여.
+- 사이즈·품종 부모 링크 `hpos_desc_code='1'` 하드코딩(매칭 불가·소속 작물 유실) → 작물 이름으로 조인해 실제 부모 `desc_code` 연결.
+
+**DB 변경 (Supabase migration)**
+- `012_common_code.sql`: `common_code` 생성(UNIQUE·부모 인덱스·RLS) + 기존 5개 테이블에서 올바른 코드/부모 링크로 재적재(idempotent, `TRUNCATE` 후 `row_number()`+`lpad`).
+- `013_drop_legacy_code_tables.sql`: 통합·검증 후 레거시 5개 테이블 `DROP`. **반드시 012 실행·검증 후** 적용(드롭 후 012 단독 재실행 불가).
+
+**코드 변경**
+- 신규 `lib/commonCode.ts`: 데이터 액세스 헬퍼(`listCodes`, `listChildren`, `listVarietiesByCropName`, `listSizesByCropName`, `getCropCode`, `addCode`(desc_code 자동 부여), `deleteCode`).
+- `AdminDataPage.tsx`: 작물·품종·사이즈·단위·비용 5개 탭 전부 헬퍼 경유. 품종·사이즈 탭은 작물 선택을 이름 대신 `desc_code` 기준 추적. `supabase` 직접 호출 제거.
+- `InputFormModal.tsx`:
+  - 단위·품종·사이즈 옵션 로딩을 헬퍼로 교체.
+  - **작물 입력을 자유 텍스트 → 공통코드 작물 선택 칩 UI로 변경**(신규/단일 수정 두 곳). 선택한 작물의 하위 품종·사이즈를 `desc_code`로 조회. 공통코드에 없는 작물은 자동 "직접 입력" 모드.
+  - 입력 중 포커스 유실 방지를 위해 `CropField`를 (JSX 엘리먼트가 아닌) 호출 함수로 구현(`EntriesContent()` 패턴 준수).
+
+---
+
+## 2026-06-16 — 12차 작업 (아이콘 전면 교체 + web 차트 호환성)
+
+### 아이콘 전면 교체
+- `@expo/vector-icons` → `phosphor-react-native` 기반으로 전 화면 아이콘 교체.
+- 신규 `components/ui/PhIcon.tsx` 래퍼 — 이름 매핑 + weight(duotone 등) 일원화.
+- 블루베리 심볼은 Cherries(duotone) 아이콘으로 표현.
+
+### web 차트 호환성 + 통계 웹 에러 수정
+- `react-native-gifted-charts`가 web에서 깨지는 문제 → 도넛/라인 차트를 `Platform.OS === 'web'`일 때 `react-native-svg`로 직접 렌더(`Svg`/`Circle`/`Path`/`Line`)하도록 분기.
+- 도넛 회전 애니메이션도 web에서는 정적 `-90°` 회전 + `Animated` 조합으로 처리(`origin` prop의 web DOM 에러 회피).
+
+### 기타
+- 기타(나눔/폐기) 항목의 "받는 분" 표시 추가.
+- `TO-BE.md` UI 개선 로드맵 문서 추가.
+
+---
+
 ## 2026-06-11 — 11차 작업 (메모 저장 버그 수정 + harvest_notes / other_notes 테이블 분리)
 
 ### 버그 수정 — 수확·기타 메모 미저장

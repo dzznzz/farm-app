@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  Animated, Easing, Platform,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Animated, Easing, Platform, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +17,7 @@ import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
 import { SummaryCard } from '../../components/cards/SummaryCard';
+import { SummaryCardSkeleton, BarChartSkeleton } from '../../components/ui/Skeleton';
 import { BreakdownModal } from '../../components/modals/BreakdownModal';
 import { ExportModal } from '../../components/modals/ExportModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
@@ -228,6 +229,8 @@ export default function StatisticsScreen() {
   const [barStats, setBarStats] = useState<DailyStat[]>([]);
   const [barLoading, setBarLoading] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const [donutData, setDonutData] = useState<Awaited<ReturnType<typeof fetchBreakdown>> | null>(null);
 
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
@@ -287,6 +290,12 @@ export default function StatisticsScreen() {
   }, [paramPeriod]);
 
   useFocusEffect(useCallback(() => { loadAll(period, selectedDate); }, [period, selectedDate, loadAll]));
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await loadAll(period, selectedDate); }
+    finally { setRefreshing(false); }
+  }, [loadAll, period, selectedDate]);
 
   // ── 파생 계산값 ──
   const range = computeSelectedRange(selectedDate, period);
@@ -430,10 +439,16 @@ export default function StatisticsScreen() {
         )}
       </LinearGradient>
 
-      <ScrollView style={styles.scroll}>
+      <ScrollView
+        style={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh}
+            colors={[Colors.primary]} tintColor={Colors.primary} />
+        }
+      >
         {/* 요약 카드 */}
         {summaryLoading ? (
-          <ActivityIndicator color={Colors.primary} style={{ marginVertical: Spacing.lg }} />
+          <SummaryCardSkeleton />
         ) : (
           <View style={styles.summarySection}>
             <View style={styles.summaryRow}>
@@ -617,7 +632,7 @@ export default function StatisticsScreen() {
             </View>
           </View>
           {barLoading ? (
-            <ActivityIndicator color={Colors.primary} style={{ marginVertical: 40 }} />
+            <BarChartSkeleton />
           ) : (
             <View style={styles.hBarChart}>
               {chartData.map((d, i) => (

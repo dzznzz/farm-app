@@ -4,20 +4,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Toast, useToast } from '../ui/Toast';
 import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { pageStyles } from './shared';
+import { listCodes, listChildren, addCode, deleteCode, CommonCodeRow } from '../../lib/commonCode';
 
 type AdminTab = 'crop' | 'variety' | 'size' | 'unit' | 'expense';
-
-interface CropType { id: string; name: string; sort_order: number }
-interface VarietyItem { id: string; crop_type: string; name: string }
-interface SizeItem { id: string; crop_type: string; name: string; range_info: string | null }
-interface UnitItem { id: string; name: string; sort_order: number }
-interface ExpenseItem { id: string; name: string; sort_order: number }
 
 interface Props { onBack: () => void; readOnly?: boolean }
 
@@ -77,15 +71,14 @@ export function AdminDataPage({ onBack, readOnly = false }: Props) {
 
 // ── 작물 탭 ─────────────────────────────────────────────────────────────────
 function CropTab() {
-  const [crops, setCrops] = useState<CropType[]>([]);
+  const [crops, setCrops] = useState<CommonCodeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
 
   const load = async () => {
-    const { data } = await supabase.from('crop_types').select('id, name, sort_order').order('sort_order');
-    setCrops(data ?? []);
+    setCrops(await listCodes('crop'));
     setLoading(false);
   };
 
@@ -94,14 +87,14 @@ function CropTab() {
   const add = async () => {
     if (!newName.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('crop_types').insert({ name: newName.trim(), sort_order: crops.length });
+    const { error } = await addCode({ main: 'crop', name: newName.trim(), sortOrder: crops.length });
     if (error) showToast('저장 실패: ' + error.message);
     else { setNewName(''); await load(); showToast('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
-    await supabase.from('crop_types').delete().eq('id', id);
+    await deleteCode(id);
     setCrops((prev) => prev.filter((c) => c.id !== id));
     showToast('삭제되었습니다.');
   };
@@ -150,47 +143,48 @@ function CropTab() {
 
 // ── 품종 탭 ─────────────────────────────────────────────────────────────────
 function VarietyTab() {
-  const [crops, setCrops] = useState<CropType[]>([]);
-  const [selectedCrop, setSelectedCrop] = useState('');
-  const [varieties, setVarieties] = useState<VarietyItem[]>([]);
+  const [crops, setCrops] = useState<CommonCodeRow[]>([]);
+  const [selectedCrop, setSelectedCrop] = useState(''); // 작물 desc_code
+  const [varieties, setVarieties] = useState<CommonCodeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
 
+  const selectedCropName = crops.find((c) => c.desc_code === selectedCrop)?.name ?? '';
+
   useEffect(() => {
-    supabase.from('crop_types').select('id, name, sort_order').order('sort_order')
-      .then(({ data }) => {
-        if (data) { setCrops(data); if (data.length > 0) setSelectedCrop(data[0].name); }
-      });
+    listCodes('crop').then((rows) => {
+      setCrops(rows);
+      if (rows.length > 0) setSelectedCrop(rows[0].desc_code);
+    });
   }, []);
+
+  const loadVarieties = async () => {
+    setLoading(true);
+    setVarieties(await listChildren('vari', 'crop', selectedCrop));
+    setLoading(false);
+  };
 
   useEffect(() => {
     if (!selectedCrop) return;
-    setLoading(true);
-    supabase.from('varieties_master').select('id, crop_type, name').eq('crop_type', selectedCrop).order('sort_order')
-      .then(({ data }) => { setVarieties(data ?? []); setLoading(false); });
+    loadVarieties();
   }, [selectedCrop]);
 
   const add = async () => {
     if (!newName.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('varieties_master').insert({
-      crop_type: selectedCrop, name: newName.trim(), sort_order: varieties.length,
+    const { error } = await addCode({
+      main: 'vari', name: newName.trim(), sortOrder: varieties.length,
+      parentMain: 'crop', parentDesc: selectedCrop,
     });
     if (error) { showToast('저장 실패: ' + error.message); }
-    else {
-      setNewName('');
-      setLoading(true);
-      supabase.from('varieties_master').select('id, crop_type, name').eq('crop_type', selectedCrop).order('sort_order')
-        .then(({ data }) => { setVarieties(data ?? []); setLoading(false); });
-      showToast('저장되었습니다.');
-    }
+    else { setNewName(''); await loadVarieties(); showToast('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
-    await supabase.from('varieties_master').delete().eq('id', id);
+    await deleteCode(id);
     setVarieties((prev) => prev.filter((v) => v.id !== id));
     showToast('삭제되었습니다.');
   };
@@ -203,10 +197,10 @@ function VarietyTab() {
             {crops.map((c) => (
               <TouchableOpacity
                 key={c.id}
-                style={[styles.cropChip, selectedCrop === c.name && styles.cropChipActive]}
-                onPress={() => setSelectedCrop(c.name)}
+                style={[styles.cropChip, selectedCrop === c.desc_code && styles.cropChipActive]}
+                onPress={() => setSelectedCrop(c.desc_code)}
               >
-                <Text style={[styles.cropChipText, selectedCrop === c.name && styles.cropChipTextActive]}>{c.name}</Text>
+                <Text style={[styles.cropChipText, selectedCrop === c.desc_code && styles.cropChipTextActive]}>{c.name}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -215,7 +209,7 @@ function VarietyTab() {
         {selectedCrop ? (
           <>
             <Card style={styles.addCard}>
-              <Text style={[Typography.bodyBold, { marginBottom: Spacing.sm }]}>{selectedCrop} 품종 추가</Text>
+              <Text style={[Typography.bodyBold, { marginBottom: Spacing.sm }]}>{selectedCropName} 품종 추가</Text>
               <View style={styles.addRow}>
                 <TextInput
                   style={styles.addInput}
@@ -261,27 +255,28 @@ function VarietyTab() {
 
 // ── 사이즈 탭 ────────────────────────────────────────────────────────────────
 function SizeTab() {
-  const [crops, setCrops] = useState<CropType[]>([]);
-  const [selectedCrop, setSelectedCrop] = useState('');
-  const [sizes, setSizes] = useState<SizeItem[]>([]);
+  const [crops, setCrops] = useState<CommonCodeRow[]>([]);
+  const [selectedCrop, setSelectedCrop] = useState(''); // 작물 desc_code
+  const [sizes, setSizes] = useState<CommonCodeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [newName, setNewName] = useState('');
   const [newRange, setNewRange] = useState('');
   const [saving, setSaving] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
 
+  const selectedCropName = crops.find((c) => c.desc_code === selectedCrop)?.name ?? '';
+
   useEffect(() => {
-    supabase.from('crop_types').select('id, name, sort_order').order('sort_order')
-      .then(({ data }) => {
-        if (data) { setCrops(data); if (data.length > 0) setSelectedCrop(data[0].name); }
-      });
+    listCodes('crop').then((rows) => {
+      setCrops(rows);
+      if (rows.length > 0) setSelectedCrop(rows[0].desc_code);
+    });
   }, []);
 
   const loadSizes = async () => {
     if (!selectedCrop) return;
     setLoading(true);
-    const { data } = await supabase.from('sizes_master').select('id, crop_type, name, range_info').eq('crop_type', selectedCrop).order('sort_order');
-    setSizes(data ?? []);
+    setSizes(await listChildren('size', 'crop', selectedCrop));
     setLoading(false);
   };
 
@@ -290,9 +285,9 @@ function SizeTab() {
   const add = async () => {
     if (!newName.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('sizes_master').insert({
-      crop_type: selectedCrop, name: newName.trim(),
-      range_info: newRange.trim() || null, sort_order: sizes.length,
+    const { error } = await addCode({
+      main: 'size', name: newName.trim(), sortOrder: sizes.length,
+      parentMain: 'crop', parentDesc: selectedCrop, info: newRange.trim() || null,
     });
     if (error) showToast('저장 실패: ' + error.message);
     else { setNewName(''); setNewRange(''); await loadSizes(); showToast('저장되었습니다.'); }
@@ -300,7 +295,7 @@ function SizeTab() {
   };
 
   const remove = async (id: string) => {
-    await supabase.from('sizes_master').delete().eq('id', id);
+    await deleteCode(id);
     setSizes((prev) => prev.filter((s) => s.id !== id));
     showToast('삭제되었습니다.');
   };
@@ -313,10 +308,10 @@ function SizeTab() {
             {crops.map((c) => (
               <TouchableOpacity
                 key={c.id}
-                style={[styles.cropChip, selectedCrop === c.name && styles.cropChipActive]}
-                onPress={() => setSelectedCrop(c.name)}
+                style={[styles.cropChip, selectedCrop === c.desc_code && styles.cropChipActive]}
+                onPress={() => setSelectedCrop(c.desc_code)}
               >
-                <Text style={[styles.cropChipText, selectedCrop === c.name && styles.cropChipTextActive]}>{c.name}</Text>
+                <Text style={[styles.cropChipText, selectedCrop === c.desc_code && styles.cropChipTextActive]}>{c.name}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -325,7 +320,7 @@ function SizeTab() {
         {selectedCrop ? (
           <>
             <Card style={styles.addCard}>
-              <Text style={[Typography.bodyBold, { marginBottom: Spacing.sm }]}>{selectedCrop} 사이즈 추가</Text>
+              <Text style={[Typography.bodyBold, { marginBottom: Spacing.sm }]}>{selectedCropName} 사이즈 추가</Text>
               <View style={styles.addRow}>
                 <TextInput style={[styles.addInput, { flex: 1 }]} value={newName} onChangeText={setNewName} placeholder="이름 (예: 대)" placeholderTextColor={Colors.textLight} returnKeyType="next" />
               </View>
@@ -345,7 +340,7 @@ function SizeTab() {
                   <View style={styles.itemRow}>
                     <View>
                       <Text style={Typography.bodyBold}>{s.name}</Text>
-                      {s.range_info ? <Text style={Typography.caption}>{s.range_info}</Text> : null}
+                      {s.info ? <Text style={Typography.caption}>{s.info}</Text> : null}
                     </View>
                     <TouchableOpacity onPress={() => remove(s.id)} style={styles.deleteBtn}>
                       <Text style={styles.deleteBtnText}>삭제</Text>
@@ -365,15 +360,14 @@ function SizeTab() {
 
 // ── 단위 탭 ─────────────────────────────────────────────────────────────────
 function UnitTab() {
-  const [units, setUnits] = useState<UnitItem[]>([]);
+  const [units, setUnits] = useState<CommonCodeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
 
   const load = async () => {
-    const { data } = await supabase.from('harvest_units').select('id, name, sort_order').order('sort_order');
-    setUnits(data ?? []);
+    setUnits(await listCodes('unit'));
     setLoading(false);
   };
 
@@ -382,14 +376,14 @@ function UnitTab() {
   const add = async () => {
     if (!newName.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('harvest_units').insert({ name: newName.trim(), sort_order: units.length });
+    const { error } = await addCode({ main: 'unit', name: newName.trim(), sortOrder: units.length });
     if (error) showToast('저장 실패: ' + error.message);
     else { setNewName(''); await load(); showToast('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
-    await supabase.from('harvest_units').delete().eq('id', id);
+    await deleteCode(id);
     setUnits((prev) => prev.filter((u) => u.id !== id));
     showToast('삭제되었습니다.');
   };
@@ -438,15 +432,14 @@ function UnitTab() {
 
 // ── 비용항목 탭 ──────────────────────────────────────────────────────────────
 function ExpenseTab() {
-  const [items, setItems] = useState<ExpenseItem[]>([]);
+  const [items, setItems] = useState<CommonCodeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
   const { toastMessage, toastVisible, showToast } = useToast();
 
   const load = async () => {
-    const { data } = await supabase.from('expense_types').select('id, name, sort_order').order('sort_order');
-    setItems(data ?? []);
+    setItems(await listCodes('exps'));
     setLoading(false);
   };
 
@@ -455,14 +448,14 @@ function ExpenseTab() {
   const add = async () => {
     if (!newName.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('expense_types').insert({ name: newName.trim(), sort_order: items.length });
+    const { error } = await addCode({ main: 'exps', name: newName.trim(), sortOrder: items.length });
     if (error) showToast('저장 실패: ' + error.message);
     else { setNewName(''); await load(); showToast('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
-    await supabase.from('expense_types').delete().eq('id', id);
+    await deleteCode(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
     showToast('삭제되었습니다.');
   };

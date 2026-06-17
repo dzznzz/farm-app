@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
-  ActivityIndicator, Platform,
+  ActivityIndicator, Platform, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -131,6 +131,7 @@ export default function InputScreen() {
   }, [params.tab]);
   const [records, setRecords] = useState<DisplayRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string; is_primary: boolean }[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -206,6 +207,12 @@ export default function InputScreen() {
   }, [user, farms]);
 
   useFocusEffect(useCallback(() => { loadRecords(date); }, [date, loadRecords]));
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await loadRecords(date); }
+    finally { setRefreshing(false); }
+  }, [loadRecords, date]);
 
   const handleDateChange = (delta: number) => {
     const next = addDays(date, delta);
@@ -285,10 +292,15 @@ export default function InputScreen() {
         </View>
       </LinearGradient>
 
-      {loading ? (
+      {loading && !refreshing ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
       ) : (
-        <ScrollView style={styles.scroll} contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}>
+        <ScrollView style={styles.scroll} contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh}
+              colors={[Colors.primary]} tintColor={Colors.primary} />
+          }
+        >
           {(tab === 'sales' ? saleGroups.length === 0 : grouped.length === 0) ? (
             <View style={styles.empty}>
               <PhIcon
