@@ -58,40 +58,49 @@ function getStepLabel(id: string, tab: TabType): string {
   return map[id] ?? id;
 }
 
-// ── SizeEntryModal ──
-interface SizeEntryModalProps {
+// ── EntryDetailModal: 품종·사이즈·수량·단가를 한 번에 입력하는 상세 모달 ──
+interface EntryDetailModalProps {
   visible: boolean;
-  variety: string;
-  initialSize: string;
+  varieties: string[];
+  sizeOptions: string[];
+  sizeInfoData: SizeInfo[];
   unitOptions: string[];
   isSales: boolean;
   onAdd: (entry: Entry) => void;
   onClose: () => void;
 }
 
-function SizeEntryModal({ visible, variety, initialSize, unitOptions, isSales, onAdd, onClose }: SizeEntryModalProps) {
-  const [size, setSize] = useState(initialSize);
+function EntryDetailModal({
+  visible, varieties, sizeOptions, sizeInfoData, unitOptions, isSales, onAdd, onClose,
+}: EntryDetailModalProps) {
+  const [variety, setVariety] = useState('');
+  const [varietyCustom, setVarietyCustom] = useState(false);
+  const [size, setSize] = useState('');
+  const [sizeCustom, setSizeCustom] = useState(false);
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState(unitOptions[0] ?? 'kg');
   const [price, setPrice] = useState('');
+  const [showSizeInfo, setShowSizeInfo] = useState(false);
   const [error, setError] = useState('');
-  const isCustom = initialSize === '';
 
   useEffect(() => {
     if (visible) {
-      setSize(initialSize);
-      setQty('');
-      setUnit(unitOptions[0] ?? 'kg');
-      setPrice('');
-      setError('');
+      setVariety(''); setVarietyCustom(varieties.length === 0);
+      setSize(''); setSizeCustom(false);
+      setQty(''); setUnit(unitOptions[0] ?? 'kg'); setPrice('');
+      setShowSizeInfo(false); setError('');
     }
-  }, [visible, initialSize]);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAdd = () => {
+    if (!variety.trim()) { setError('품종을 입력해주세요.'); return; }
     if (!size.trim()) { setError('사이즈를 입력해주세요.'); return; }
     if (!qty.trim() || isNaN(parseFloat(qty))) { setError('수량을 입력해주세요.'); return; }
     if (isSales && (!price.trim() || isNaN(parseFloat(price)))) { setError('단가를 입력해주세요.'); return; }
-    onAdd({ variety, size: size.trim(), quantity: qty.trim(), unit, price: isSales ? price : undefined });
+    onAdd({
+      variety: variety.trim(), size: size.trim(), quantity: qty.trim(),
+      unit, price: isSales ? price : undefined,
+    });
     onClose();
   };
 
@@ -101,50 +110,95 @@ function SizeEntryModal({ visible, variety, initialSize, unitOptions, isSales, o
         <TouchableOpacity style={seStyles.overlay} activeOpacity={1} onPress={onClose}>
           <TouchableOpacity activeOpacity={1} style={seStyles.sheet}>
             <View style={seStyles.handle} />
-            <Text style={seStyles.header}>{variety}</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={seStyles.header}>내역 추가</Text>
 
-            {isCustom ? (
-              <>
-                <Text style={seStyles.label}>사이즈</Text>
-                <TextInput style={seStyles.input} value={size} onChangeText={setSize}
-                  placeholder="예) 왕왕특, 점보" placeholderTextColor={Colors.textLight} autoFocus />
-              </>
-            ) : (
-              <View style={seStyles.sizeTag}>
-                <Text style={seStyles.sizeTagText}>{initialSize}</Text>
-              </View>
-            )}
-
-            <Text style={seStyles.label}>수량</Text>
-            <View style={seStyles.row}>
-              <TextInput style={[seStyles.input, { flex: 1 }]} value={qty} onChangeText={setQty}
-                placeholder="0" placeholderTextColor={Colors.textLight}
-                keyboardType="decimal-pad" autoFocus={!isCustom} />
-              <View style={seStyles.unitRow}>
-                {unitOptions.map((u) => (
-                  <TouchableOpacity key={u}
-                    style={[seStyles.unitChip, unit === u && seStyles.unitChipActive]}
-                    onPress={() => setUnit(u)}>
-                    <Text style={[seStyles.unitText, unit === u && seStyles.unitTextActive]}>{u}</Text>
+              {/* 품종 */}
+              <Text style={seStyles.label}>품종</Text>
+              <View style={seStyles.chipRow}>
+                {varieties.map((v) => (
+                  <TouchableOpacity key={v}
+                    style={[seStyles.chip, !varietyCustom && variety === v && seStyles.chipActive]}
+                    onPress={() => { setVariety(v); setVarietyCustom(false); }}>
+                    <Text style={[seStyles.chipText, !varietyCustom && variety === v && seStyles.chipTextActive]}>{v}</Text>
                   </TouchableOpacity>
                 ))}
+                <TouchableOpacity
+                  style={[seStyles.chip, varietyCustom && seStyles.chipActive]}
+                  onPress={() => { setVarietyCustom(true); setVariety(''); }}>
+                  <Text style={[seStyles.chipText, varietyCustom && seStyles.chipTextActive]}>직접 입력</Text>
+                </TouchableOpacity>
               </View>
-            </View>
+              {(varietyCustom || varieties.length === 0) && (
+                <TextInput style={[seStyles.input, { marginTop: 6 }]} value={variety} onChangeText={setVariety}
+                  placeholder="품종 직접 입력" placeholderTextColor={Colors.textLight} />
+              )}
 
-            {isSales && (
-              <>
-                <Text style={seStyles.label}>단가 (원)</Text>
-                <TextInput style={seStyles.input} value={price} onChangeText={setPrice}
-                  placeholder="0" placeholderTextColor={Colors.textLight}
-                  keyboardType="decimal-pad" />
-              </>
-            )}
+              {/* 사이즈 */}
+              <View style={seStyles.labelRow}>
+                <Text style={seStyles.label}>사이즈</Text>
+                {sizeInfoData.length > 0 && (
+                  <TouchableOpacity onPress={() => setShowSizeInfo((v) => !v)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <PhIcon name="info" size={16} color={Colors.textSub} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {showSizeInfo && sizeInfoData.length > 0 && (
+                <View style={seStyles.sizeInfoBox}>
+                  {sizeInfoData.map((s) => (
+                    <Text key={s.name} style={seStyles.sizeInfoText}>{s.name}{s.range ? ` : ${s.range}` : ''}</Text>
+                  ))}
+                </View>
+              )}
+              <View style={seStyles.chipRow}>
+                {sizeOptions.map((s) => (
+                  <TouchableOpacity key={s}
+                    style={[seStyles.chip, !sizeCustom && size === s && seStyles.chipActive]}
+                    onPress={() => { setSize(s); setSizeCustom(false); }}>
+                    <Text style={[seStyles.chipText, !sizeCustom && size === s && seStyles.chipTextActive]}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[seStyles.chip, sizeCustom && seStyles.chipActive]}
+                  onPress={() => { setSizeCustom(true); setSize(''); }}>
+                  <Text style={[seStyles.chipText, sizeCustom && seStyles.chipTextActive]}>직접 입력</Text>
+                </TouchableOpacity>
+              </View>
+              {sizeCustom && (
+                <TextInput style={[seStyles.input, { marginTop: 6 }]} value={size} onChangeText={setSize}
+                  placeholder="예) 왕왕특, 점보" placeholderTextColor={Colors.textLight} />
+              )}
 
-            {!!error && <Text style={seStyles.error}>{error}</Text>}
+              {/* 수량 */}
+              <Text style={seStyles.label}>수량</Text>
+              <View style={seStyles.row}>
+                <TextInput style={[seStyles.input, { flex: 1 }]} value={qty} onChangeText={setQty}
+                  placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="decimal-pad" />
+                <View style={seStyles.unitRow}>
+                  {unitOptions.map((u) => (
+                    <TouchableOpacity key={u}
+                      style={[seStyles.unitChip, unit === u && seStyles.unitChipActive]}
+                      onPress={() => setUnit(u)}>
+                      <Text style={[seStyles.unitText, unit === u && seStyles.unitTextActive]}>{u}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
 
-            <TouchableOpacity style={seStyles.addBtn} onPress={handleAdd}>
-              <Text style={seStyles.addBtnText}>추가</Text>
-            </TouchableOpacity>
+              {isSales && (
+                <>
+                  <Text style={seStyles.label}>단가 (원)</Text>
+                  <TextInput style={seStyles.input} value={price} onChangeText={setPrice}
+                    placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="decimal-pad" />
+                </>
+              )}
+
+              {!!error && <Text style={seStyles.error}>{error}</Text>}
+
+              <TouchableOpacity style={seStyles.addBtn} onPress={handleAdd}>
+                <Text style={seStyles.addBtnText}>추가</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </KeyboardAvoidingView>
@@ -156,19 +210,27 @@ const seStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: Spacing.lg, paddingBottom: 40,
+    padding: Spacing.lg, paddingBottom: 40, maxHeight: '88%',
   },
   handle: {
     width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2,
     alignSelf: 'center', marginBottom: Spacing.md,
   },
   header: { ...Typography.h3, marginBottom: Spacing.md },
-  sizeTag: {
-    alignSelf: 'flex-start', backgroundColor: Colors.primaryUltraLight,
-    borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 6,
-    borderWidth: 1, borderColor: Colors.primaryLight, marginBottom: Spacing.md,
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.background,
   },
-  sizeTagText: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark },
+  chipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
+  chipText: { fontSize: 14, color: Colors.textSub, fontWeight: '600' },
+  chipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sizeInfoBox: {
+    backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
+    padding: Spacing.sm, marginTop: 6,
+  },
+  sizeInfoText: { fontSize: 12, color: Colors.primaryDark, lineHeight: 18 },
   label: { ...Typography.label, marginBottom: 4, marginTop: Spacing.sm },
   input: {
     backgroundColor: Colors.background, borderRadius: Radius.md,
@@ -303,11 +365,7 @@ export function InputFormModal({
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [originalEntryIds, setOriginalEntryIds] = useState<string[]>([]); // 그룹 수정 시 원본 ID 추적
-  const [newVariety, setNewVariety] = useState('');
-  const [showVarietyInput, setShowVarietyInput] = useState(false);
-  const [showSizeInfo, setShowSizeInfo] = useState(false);
-  const [sizeModalVisible, setSizeModalVisible] = useState(false);
-  const [sizeModalTarget, setSizeModalTarget] = useState('');
+  const [entryModalVisible, setEntryModalVisible] = useState(false);
   const [entryError, setEntryError] = useState('');
 
   // Edit mode fields
@@ -360,8 +418,7 @@ export function InputFormModal({
     setCropType(pFarm?.crop_type ?? '블루베리');
     setOtherType('gift'); setEntries([]); setOriginalEntryIds([]);
     setShowCropInput(false);
-    setNewVariety(''); setShowVarietyInput(false); setShowSizeInfo(false);
-    setSizeModalVisible(false); setSizeModalTarget(''); setEntryError('');
+    setEntryModalVisible(false); setEntryError('');
     setEditVariety(''); setShowEditVarietyInput(false); setEditSize(''); setEditCustomSizeMode(false);
     setEditShowSizeInfo(false); setEditQty(''); setEditUnit('kg');
     setWorkers([]); setWName(''); setWHours(''); setWCost(String(MINIMUM_HOURLY_WAGE)); setWorkerError('');
@@ -835,8 +892,26 @@ export function InputFormModal({
     const grandTotalUnit = entries[0]?.unit ?? 'kg';
     return (
     <>
+      <TouchableOpacity style={styles.addEntryBox} onPress={() => setEntryModalVisible(true)} activeOpacity={0.7}>
+        <View style={styles.addEntryBoxIcon}><Text style={styles.addEntryBoxPlus}>+</Text></View>
+        <Text style={styles.addEntryBoxText}>내역 추가</Text>
+      </TouchableOpacity>
+      {!!entryError && <Text style={styles.errorText}>{entryError}</Text>}
+
+      {tab === 'sales' && (
+        <TouchableOpacity
+          style={[styles.harvestImportBtn, loadingHarvest && { opacity: 0.5 }, { marginTop: Spacing.sm }]}
+          onPress={loadFromHarvest}
+          disabled={loadingHarvest}
+        >
+          <Text style={styles.harvestImportText}>
+            {loadingHarvest ? '불러오는 중...' : '수확데이터 가져오기'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {entries.length > 0 && (
-        <View style={styles.entryList}>
+        <View style={[styles.entryList, { marginTop: Spacing.sm }]}>
           {varietyGroups.map((vg, vgi) => {
             const varietyTotal = vg.indices.reduce((s, i) => s + (parseFloat(entries[i].quantity) || 0), 0);
             const vUnit = entries[vg.indices[0]]?.unit ?? 'kg';
@@ -917,78 +992,6 @@ export function InputFormModal({
         </View>
       )}
 
-      {tab === 'sales' && (
-        <TouchableOpacity
-          style={[styles.harvestImportBtn, loadingHarvest && { opacity: 0.5 }]}
-          onPress={loadFromHarvest}
-          disabled={loadingHarvest}
-        >
-          <Text style={styles.harvestImportText}>
-            {loadingHarvest ? '불러오는 중...' : '수확데이터 가져오기'}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      <View style={styles.entryForm}>
-        <Text style={styles.formLabel}>품종</Text>
-        <View style={styles.chipRow}>
-          {varieties.map((v) => (
-            <TouchableOpacity key={v}
-              style={[styles.chip, newVariety === v && !showVarietyInput && styles.chipActive]}
-              onPress={() => { setNewVariety(v); setShowVarietyInput(false); }}>
-              <Text style={[styles.chipText, newVariety === v && !showVarietyInput && styles.chipTextActive]}>{v}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={[styles.chip, styles.sizeChipAction, showVarietyInput && styles.chipActive]}
-            onPress={() => { setShowVarietyInput(true); setNewVariety(''); }}>
-            <Text style={[styles.chipText, showVarietyInput && styles.chipTextActive]}>직접 입력</Text>
-          </TouchableOpacity>
-        </View>
-        {(showVarietyInput || varieties.length === 0) && (
-          <TextInput style={[styles.input, { marginTop: 6 }]} value={newVariety} onChangeText={setNewVariety}
-            placeholder="품종 직접 입력" placeholderTextColor={Colors.textLight} autoFocus />
-        )}
-
-        {newVariety.trim() !== '' && (
-          <>
-            <View style={styles.labelRow}>
-              <Text style={[styles.formLabel, { marginTop: Spacing.sm }]}>사이즈 선택</Text>
-              {sizeInfoData.length > 0 && (
-                <TouchableOpacity onPress={() => setShowSizeInfo(v => !v)}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <PhIcon name="info" size={16} color={Colors.textSub} />
-                </TouchableOpacity>
-              )}
-            </View>
-            {showSizeInfo && sizeInfoData.length > 0 && (
-              <View style={styles.sizeInfoBox}>
-                {sizeInfoData.map((s) => (
-                  <Text key={s.name} style={styles.sizeInfoText}>
-                    {s.name}{s.range ? ` : ${s.range}` : ''}
-                  </Text>
-                ))}
-              </View>
-            )}
-            <Text style={styles.sizeHint}>
-              {tab === 'sales' ? '탭하면 수량/단가 입력' : '탭하면 수량 입력'}
-            </Text>
-            <View style={styles.chipRow}>
-              {sizeOptions.map((s) => (
-                <TouchableOpacity key={s} style={[styles.chip, styles.sizeChipAction]}
-                  onPress={() => { setSizeModalTarget(s); setSizeModalVisible(true); }}>
-                  <Text style={styles.chipText}>{s}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity style={[styles.chip, styles.sizeChipAction]}
-                onPress={() => { setSizeModalTarget(''); setSizeModalVisible(true); }}>
-                <Text style={styles.chipText}>직접 입력</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-        {!!entryError && <Text style={styles.errorText}>{entryError}</Text>}
-      </View>
     </>
     );
   };
@@ -1418,17 +1421,18 @@ export function InputFormModal({
         onSelect={(d) => { setDate(d); setShowCalendar(false); if (!isEdit && !isGroupEdit) advanceStep(); }}
         onClose={() => setShowCalendar(false)} />
 
-      <SizeEntryModal
-        visible={sizeModalVisible}
-        variety={newVariety}
-        initialSize={sizeModalTarget}
+      <EntryDetailModal
+        visible={entryModalVisible}
+        varieties={varieties}
+        sizeOptions={sizeOptions}
+        sizeInfoData={sizeInfoData}
         unitOptions={unitOptions}
         isSales={tab === 'sales'}
         onAdd={(entry) => {
           setEntryError('');
           setEntries(prev => sortEntries([...prev, entry], sizeOptions));
         }}
-        onClose={() => setSizeModalVisible(false)}
+        onClose={() => setEntryModalVisible(false)}
       />
     </Modal>
   );
@@ -1575,6 +1579,18 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.primaryLight,
   },
   addEntryBtnText: { color: Colors.primaryDark, fontWeight: '700', fontSize: 14 },
+  addEntryBox: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    borderWidth: 1.5, borderColor: Colors.primaryLight, borderStyle: 'dashed',
+    paddingVertical: 16, marginTop: Spacing.sm,
+  },
+  addEntryBoxIcon: {
+    width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addEntryBoxPlus: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
+  addEntryBoxText: { fontSize: 15, fontWeight: '700', color: Colors.primaryDark },
   workerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 0 },
   optionalSection: {
     backgroundColor: Colors.surface, borderRadius: Radius.lg,
