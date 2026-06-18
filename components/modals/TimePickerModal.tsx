@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
+import { BottomSheet } from '../ui/BottomSheet';
 
 interface Props {
   visible: boolean;
@@ -32,17 +33,16 @@ export function TimePickerModal({ visible, value, onSelect, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <View style={styles.header}>
-            <Text style={styles.title}>시간 선택</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.closeBtn}>✕</Text>
-            </TouchableOpacity>
-          </View>
+    <BottomSheet visible={visible} onClose={onClose}>
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.title}>시간 선택</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={styles.closeBtn}>✕</Text>
+          </TouchableOpacity>
+        </View>
 
-          <View style={styles.pickerRow}>
+        <View style={styles.pickerRow}>
             <View style={styles.col}>
               <Text style={styles.colLabel}>시</Text>
               <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -80,28 +80,16 @@ export function TimePickerModal({ visible, value, onSelect, onClose }: Props) {
             <Text style={styles.previewText}>{hour}:{minute}</Text>
           </View>
 
-          <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-            <Text style={styles.confirmText}>확인</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
+          <Text style={styles.confirmText}>확인</Text>
+        </TouchableOpacity>
       </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: Spacing.lg,
-    paddingBottom: Spacing.xl,
-  },
+  content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

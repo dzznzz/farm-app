@@ -6,6 +6,7 @@ import * as Notifications from 'expo-notifications';
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../hooks/useAuth';
+import { ToastProvider } from '../components/ui/Toast';
 import { Colors } from '../constants/theme';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -67,9 +68,9 @@ export default function RootLayout() {
   }, [user]);
 
   return (
-    <>
+    <ToastProvider>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }} />
-    </>
+    </ToastProvider>
   );
 }

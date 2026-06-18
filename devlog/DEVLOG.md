@@ -15,6 +15,22 @@
 
 ---
 
+## 2026-06-18 — 16차 작업 (바텀시트 + 전역 Toast)
+
+### TO-BE 로드맵 7·8 적용 — 추가 패키지 없이 RN 내장 API만 사용
+
+**8. 전역 Toast (`components/ui/Toast.tsx`)**
+- `ToastProvider`(루트 레이아웃에 배치) + `useToast()` → `toast.success/error/info`. 타입별 아이콘·색(success=check 녹색, error/info=info 빨강/연보라), 하단 슬라이드업 + 자동 닫힘(2.2s).
+- 기존 로컬 `useToast`(메시지/표시 상태를 화면마다 관리하던 방식)를 전역으로 통합. `todo.tsx`·`AdminDataPage.tsx`의 모든 토스트 호출을 새 API로 마이그레이션하고 각 화면의 `<Toast/>` 인스턴스 제거.
+- 입력 화면 저장(`onSaved`)·삭제(`confirmDelete`)도 토스트로 연결(`error`가 supabase 응답 변수와 겹치지 않도록 `toast` 객체 형태로 노출).
+
+**7. 바텀시트 (`components/ui/BottomSheet.tsx`)**
+- RN `Modal` + `Animated`(spring slide-up + 백드롭 페이드) + `PanResponder`(핸들 바를 아래로 끌면 닫힘, 딤 탭으로도 닫힘). web/native 공용, safe-area 하단 패딩 반영.
+- `SelectModal`·`TimePickerModal`을 바텀시트로 전환(기존엔 `animationType="slide"`만 흉내 → 드래그 닫기·spring·백드롭 추가).
+- 입력 폼(키보드 가림)·날씨(콘텐츠량)·캘린더(중앙 다이얼로그가 자연스러움)는 현행 유지 — 후속 검토 대상.
+
+---
+
 ## 2026-06-18 — 15차 작업 (차트 인터랙션)
 
 ### TO-BE 로드맵 6 적용 — 도넛·막대 탭 인터랙션

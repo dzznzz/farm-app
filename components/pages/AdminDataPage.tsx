@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '../ui/Card';
-import { Toast, useToast } from '../ui/Toast';
+import { useToast } from '../ui/Toast';
 import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { pageStyles } from './shared';
@@ -75,7 +75,7 @@ function CropTab() {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
-  const { toastMessage, toastVisible, showToast } = useToast();
+  const toast = useToast();
 
   const load = async () => {
     setCrops(await listCodes('crop'));
@@ -88,15 +88,15 @@ function CropTab() {
     if (!newName.trim()) return;
     setSaving(true);
     const { error } = await addCode({ main: 'crop', name: newName.trim(), sortOrder: crops.length });
-    if (error) showToast('저장 실패: ' + error.message);
-    else { setNewName(''); await load(); showToast('저장되었습니다.'); }
+    if (error) toast.error('저장 실패: ' + error.message);
+    else { setNewName(''); await load(); toast.success('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
     await deleteCode(id);
     setCrops((prev) => prev.filter((c) => c.id !== id));
-    showToast('삭제되었습니다.');
+    toast.success('삭제되었습니다.');
   };
 
   return (
@@ -136,7 +136,6 @@ function CropTab() {
         )}
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
-      <Toast message={toastMessage} visible={toastVisible} />
     </View>
   );
 }
@@ -149,7 +148,7 @@ function VarietyTab() {
   const [loading, setLoading] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
-  const { toastMessage, toastVisible, showToast } = useToast();
+  const toast = useToast();
 
   const selectedCropName = crops.find((c) => c.desc_code === selectedCrop)?.name ?? '';
 
@@ -178,15 +177,15 @@ function VarietyTab() {
       main: 'vari', name: newName.trim(), sortOrder: varieties.length,
       parentMain: 'crop', parentDesc: selectedCrop,
     });
-    if (error) { showToast('저장 실패: ' + error.message); }
-    else { setNewName(''); await loadVarieties(); showToast('저장되었습니다.'); }
+    if (error) { toast.error('저장 실패: ' + error.message); }
+    else { setNewName(''); await loadVarieties(); toast.success('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
     await deleteCode(id);
     setVarieties((prev) => prev.filter((v) => v.id !== id));
-    showToast('삭제되었습니다.');
+    toast.success('삭제되었습니다.');
   };
 
   return (
@@ -248,7 +247,6 @@ function VarietyTab() {
         )}
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
-      <Toast message={toastMessage} visible={toastVisible} />
     </View>
   );
 }
@@ -262,7 +260,7 @@ function SizeTab() {
   const [newName, setNewName] = useState('');
   const [newRange, setNewRange] = useState('');
   const [saving, setSaving] = useState(false);
-  const { toastMessage, toastVisible, showToast } = useToast();
+  const toast = useToast();
 
   const selectedCropName = crops.find((c) => c.desc_code === selectedCrop)?.name ?? '';
 
@@ -289,15 +287,15 @@ function SizeTab() {
       main: 'size', name: newName.trim(), sortOrder: sizes.length,
       parentMain: 'crop', parentDesc: selectedCrop, info: newRange.trim() || null,
     });
-    if (error) showToast('저장 실패: ' + error.message);
-    else { setNewName(''); setNewRange(''); await loadSizes(); showToast('저장되었습니다.'); }
+    if (error) toast.error('저장 실패: ' + error.message);
+    else { setNewName(''); setNewRange(''); await loadSizes(); toast.success('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
     await deleteCode(id);
     setSizes((prev) => prev.filter((s) => s.id !== id));
-    showToast('삭제되었습니다.');
+    toast.success('삭제되었습니다.');
   };
 
   return (
@@ -353,7 +351,6 @@ function SizeTab() {
         ) : null}
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
-      <Toast message={toastMessage} visible={toastVisible} />
     </View>
   );
 }
@@ -364,7 +361,7 @@ function UnitTab() {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
-  const { toastMessage, toastVisible, showToast } = useToast();
+  const toast = useToast();
 
   const load = async () => {
     setUnits(await listCodes('unit'));
@@ -377,15 +374,15 @@ function UnitTab() {
     if (!newName.trim()) return;
     setSaving(true);
     const { error } = await addCode({ main: 'unit', name: newName.trim(), sortOrder: units.length });
-    if (error) showToast('저장 실패: ' + error.message);
-    else { setNewName(''); await load(); showToast('저장되었습니다.'); }
+    if (error) toast.error('저장 실패: ' + error.message);
+    else { setNewName(''); await load(); toast.success('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
     await deleteCode(id);
     setUnits((prev) => prev.filter((u) => u.id !== id));
-    showToast('삭제되었습니다.');
+    toast.success('삭제되었습니다.');
   };
 
   return (
@@ -425,7 +422,6 @@ function UnitTab() {
         )}
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
-      <Toast message={toastMessage} visible={toastVisible} />
     </View>
   );
 }
@@ -436,7 +432,7 @@ function ExpenseTab() {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
-  const { toastMessage, toastVisible, showToast } = useToast();
+  const toast = useToast();
 
   const load = async () => {
     setItems(await listCodes('exps'));
@@ -449,15 +445,15 @@ function ExpenseTab() {
     if (!newName.trim()) return;
     setSaving(true);
     const { error } = await addCode({ main: 'exps', name: newName.trim(), sortOrder: items.length });
-    if (error) showToast('저장 실패: ' + error.message);
-    else { setNewName(''); await load(); showToast('저장되었습니다.'); }
+    if (error) toast.error('저장 실패: ' + error.message);
+    else { setNewName(''); await load(); toast.success('저장되었습니다.'); }
     setSaving(false);
   };
 
   const remove = async (id: string) => {
     await deleteCode(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
-    showToast('삭제되었습니다.');
+    toast.success('삭제되었습니다.');
   };
 
   return (
@@ -500,7 +496,6 @@ function ExpenseTab() {
         )}
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
-      <Toast message={toastMessage} visible={toastVisible} />
     </View>
   );
 }

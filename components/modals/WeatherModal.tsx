@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   hourlyScroll: { paddingLeft: Spacing.lg },
   hourlyCard: { alignItems: 'center', marginRight: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, minWidth: 72 },
   hourlyRowWeb: { flexDirection: 'row', paddingHorizontal: Spacing.lg, gap: Spacing.sm },
-  hourlyCardWeb: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm, paddingVertical: Spacing.sm, minWidth: 0 },
+  hourlyCardWeb: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm, paddingVertical: Spacing.sm, minWidth: 72 },
   hourlyTime: { fontSize: 11, color: Colors.textSub, marginBottom: 6 },
   hourlyIcon: { fontSize: 22, marginBottom: 6 },
   hourlyTemp: { fontSize: 14, fontWeight: '700', color: Colors.text },

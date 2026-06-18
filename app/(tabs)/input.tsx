@@ -15,6 +15,7 @@ import { InputFormModal } from '../../components/modals/InputFormModal';
 import { RecordDetailModal, DisplayRecord } from '../../components/modals/RecordDetailModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
 import { hapticSelection, hapticLight, hapticSuccess, hapticError } from '../../lib/haptics';
+import { useToast } from '../../components/ui/Toast';
 
 type TabType = 'harvest' | 'sales' | 'other';
 
@@ -120,6 +121,7 @@ function groupByFarmCrop(records: DisplayRecord[], recordType: TabType): FarmCro
 
 export default function InputScreen() {
   const { user } = useAuth();
+  const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string }>();
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
@@ -250,6 +252,7 @@ export default function InputScreen() {
       : type === 'sales' ? 'sales_records' : 'other_records';
     await supabase.from(table).delete().in('id', deleteTarget.map(r => r.id));
     hapticError();
+    toast.success('삭제되었습니다.');
     setDeleteTarget(null);
     loadRecords(date);
   };
@@ -540,7 +543,7 @@ export default function InputScreen() {
         editRecord={editRecord}
         groupEditRecords={groupEditRecords}
         onClose={() => { setShowForm(false); setEditRecord(undefined); setGroupEditRecords(undefined); }}
-        onSaved={() => { hapticSuccess(); loadRecords(date); }}
+        onSaved={() => { hapticSuccess(); toast.success('저장되었습니다.'); loadRecords(date); }}
       />
 
       {/* 개별 레코드 상세 (RecordDetailModal은 그룹 수정 폼에서 대체됨, 필요 시 유지) */}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
+import { BottomSheet } from '../ui/BottomSheet';
 
 interface Props {
   visible: boolean;
@@ -16,61 +17,50 @@ export function SelectModal({ visible, title, options, value, onSelect, onClose,
   const [customInput, setCustomInput] = useState('');
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} onPress={onClose} activeOpacity={1}>
-        <TouchableOpacity activeOpacity={1} style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>{title}</Text>
-          <FlatList
-            data={options}
-            keyExtractor={(item) => item}
-            style={{ maxHeight: 300 }}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[styles.option, value === item && styles.optionSelected]}
-                onPress={() => { onSelect(item); onClose(); }}
-              >
-                <Text style={[styles.optionText, value === item && styles.optionTextSelected]}>{item}</Text>
-                {value === item && <Text style={styles.check}>✓</Text>}
-              </TouchableOpacity>
-            )}
-          />
-          {allowCustom && (
-            <View style={styles.customRow}>
-              <TextInput
-                style={styles.customInput}
-                value={customInput}
-                onChangeText={setCustomInput}
-                placeholder="직접 입력..."
-                placeholderTextColor={Colors.textLight}
-              />
-              <TouchableOpacity
-                style={styles.customBtn}
-                onPress={() => { if (customInput.trim()) { onSelect(customInput.trim()); onClose(); } }}
-              >
-                <Text style={styles.customBtnText}>추가</Text>
-              </TouchableOpacity>
-            </View>
+    <BottomSheet visible={visible} onClose={onClose}>
+      <View style={styles.content}>
+        <Text style={styles.title}>{title}</Text>
+        <FlatList
+          data={options}
+          keyExtractor={(item) => item}
+          style={{ maxHeight: 300 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.option, value === item && styles.optionSelected]}
+              onPress={() => { onSelect(item); onClose(); }}
+            >
+              <Text style={[styles.optionText, value === item && styles.optionTextSelected]}>{item}</Text>
+              {value === item && <Text style={styles.check}>✓</Text>}
+            </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>취소</Text>
-          </TouchableOpacity>
+        />
+        {allowCustom && (
+          <View style={styles.customRow}>
+            <TextInput
+              style={styles.customInput}
+              value={customInput}
+              onChangeText={setCustomInput}
+              placeholder="직접 입력..."
+              placeholderTextColor={Colors.textLight}
+            />
+            <TouchableOpacity
+              style={styles.customBtn}
+              onPress={() => { if (customInput.trim()) { onSelect(customInput.trim()); onClose(); } }}
+            >
+              <Text style={styles.customBtnText}>추가</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+          <Text style={styles.closeBtnText}>취소</Text>
         </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
+      </View>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: Colors.surface, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl,
-    padding: Spacing.lg, paddingBottom: Spacing.xl,
-  },
-  handle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border,
-    alignSelf: 'center', marginBottom: Spacing.md,
-  },
+  content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm },
   title: { ...Typography.h3, marginBottom: Spacing.md },
   option: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

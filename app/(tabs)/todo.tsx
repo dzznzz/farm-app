@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
-import { Toast, useToast } from '../../components/ui/Toast';
+import { useToast } from '../../components/ui/Toast';
 import { TimePickerModal } from '../../components/modals/TimePickerModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
@@ -100,7 +100,7 @@ export default function TodoScreen() {
   const [editTime, setEditTime] = useState('');
   const [editAlarm, setEditAlarm] = useState(false);
   const [showEditTimePicker, setShowEditTimePicker] = useState(false);
-  const { toastMessage, toastVisible, showToast } = useToast();
+  const toast = useToast();
   const [showCalendar, setShowCalendar] = useState(false);
   const [showAlarmTooltip, setShowAlarmTooltip] = useState(false);
   const [showEditAlarmTooltip, setShowEditAlarmTooltip] = useState(false);
@@ -132,8 +132,8 @@ export default function TodoScreen() {
 
   const handleAdd = async () => {
     const text = newText.trim();
-    if (!text) { showToast('내용을 입력해주세요.'); return; }
-    if (!newTime.trim()) { showToast('시간을 선택해주세요.'); return; }
+    if (!text) { toast.error('내용을 입력해주세요.'); return; }
+    if (!newTime.trim()) { toast.error('시간을 선택해주세요.'); return; }
     if (!user) return;
 
     const { data, error } = await supabase
@@ -152,7 +152,7 @@ export default function TodoScreen() {
       setNewText('');
       setNewTime('00:00');
       setNewAlarm(false);
-      showToast('저장되었습니다.');
+      toast.success('저장되었습니다.');
     }
   };
 
@@ -166,7 +166,7 @@ export default function TodoScreen() {
     await supabase.from('todos').delete().eq('id', id);
     await cancelAlarm(id);
     setTodos((prev) => prev.filter((t) => t.id !== id));
-    showToast('삭제되었습니다.');
+    toast.success('삭제되었습니다.');
   };
 
   const handleStartEdit = async (todo: Todo) => {
@@ -212,7 +212,7 @@ export default function TodoScreen() {
       setEditText('');
       setEditTime('');
       setEditAlarm(false);
-      showToast('수정되었습니다.');
+      toast.success('수정되었습니다.');
     }
   };
 
@@ -222,7 +222,7 @@ export default function TodoScreen() {
     await supabase.from('todos').delete().in('id', completedIds);
     await Promise.all(completedIds.map(cancelAlarm));
     setTodos((prev) => prev.filter((t) => !t.completed));
-    showToast(`${completedIds.length}개 삭제되었습니다.`);
+    toast.success(`${completedIds.length}개 삭제되었습니다.`);
   };
 
   const doneCount = todos.filter((t) => t.completed).length;
@@ -434,7 +434,6 @@ export default function TodoScreen() {
         onSelect={(d) => { setDate(d); load(d); setShowCalendar(false); }}
         onClose={() => setShowCalendar(false)}
       />
-      <Toast message={toastMessage} visible={toastVisible} />
     </SafeAreaView>
   );
 }

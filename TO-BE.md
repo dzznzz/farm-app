@@ -40,17 +40,22 @@
 - 도넛 조각이나 막대를 탭하면 해당 항목 상세(툴팁 / 하이라이트)가 뜨도록.
 - 06/18 적용 완료. (도넛: 조각·항목표 탭 → 중앙에 선택 항목명/수량/비율 + 조각 강조 / 막대: 탭 → 행 하이라이트 + 하단 상세 툴팁(값·전체 대비 비율), 한 번 더 탭하면 해제)
 
-### 7. 바텀시트 모달
+### 7. 바텀시트 모달 ✅(부분)
 - 현재 전체화면 Modal(날씨 · 입력 폼) 대신 아래에서 올라오는 시트.
 - `@gorhom/bottom-sheet` 또는 `@expo/ui`의 BottomSheet.
 - iOS 네이티브 느낌.
+- 06/18 적용. 추가 패키지 없이 `components/ui/BottomSheet.tsx`(RN Modal+Animated+PanResponder, 핸들 드래그/딤 탭으로 닫힘, web/native 공용) 신규.
+  - 선택 모달(`SelectModal`)·시간 선택(`TimePickerModal`)을 바텀시트로 전환.
+  - **보류:** 입력 폼(키보드 가림 이슈)·날씨(콘텐츠량 많아 거의 풀스크린)는 현행 유지 — 추후 키보드 회피 처리 후 검토. 캘린더는 중앙 다이얼로그가 더 자연스러워 유지.
 
 ---
 
 ## 더 큰 작업
 
-### 8. Toast / Snackbar
+### 8. Toast / Snackbar ✅
 - 저장·삭제 후 `Alert` 대신 하단에 살짝 뜨는 알림.
+- 06/18 적용. 전역 `ToastProvider` + `useToast()`(success/error/info, 아이콘·색 구분, 하단 슬라이드업). 루트 레이아웃에 Provider 배치.
+  - 기존 로컬 토스트(`todo`, `AdminDataPage`)를 전역으로 통합, 입력 저장·삭제도 토스트로 연결.
 
 ---
 
