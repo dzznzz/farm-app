@@ -1,7 +1,8 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, ActivityIndicator } from 'react-native';
+import { Text, StyleSheet, ViewStyle, ActivityIndicator, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Radius } from '../../constants/theme';
+import { PressableScale } from './PressableScale';
 
 interface ButtonProps {
   title: string;
@@ -13,9 +14,13 @@ interface ButtonProps {
 }
 
 export function Button({ title, onPress, variant = 'primary', loading, disabled, style }: ButtonProps) {
+  const inactive = disabled || loading;
+  // 주요 액션(primary)은 조금 더 묵직한 햅틱, 나머지는 가벼운 햅틱
+  const haptic = inactive ? 'none' : variant === 'primary' ? 'medium' : 'light';
+
   if (variant === 'primary') {
     return (
-      <TouchableOpacity onPress={onPress} disabled={disabled || loading} style={style}>
+      <PressableScale onPress={onPress} disabled={inactive} style={style} haptic={haptic}>
         <LinearGradient
           colors={[Colors.primary, Colors.primaryDark]}
           start={{ x: 0, y: 0 }}
@@ -28,22 +33,24 @@ export function Button({ title, onPress, variant = 'primary', loading, disabled,
             <Text style={styles.primaryText}>{title}</Text>
           )}
         </LinearGradient>
-      </TouchableOpacity>
+      </PressableScale>
     );
   }
 
   if (variant === 'outline') {
     return (
-      <TouchableOpacity onPress={onPress} disabled={disabled || loading} style={[styles.outline, style]}>
+      <PressableScale onPress={onPress} disabled={inactive} style={[styles.outline, style]} haptic={haptic}>
         <Text style={styles.outlineText}>{title}</Text>
-      </TouchableOpacity>
+      </PressableScale>
     );
   }
 
   return (
-    <TouchableOpacity onPress={onPress} disabled={disabled || loading} style={style}>
-      <Text style={styles.ghostText}>{title}</Text>
-    </TouchableOpacity>
+    <PressableScale onPress={onPress} disabled={inactive} style={style} haptic={haptic}>
+      <View style={styles.ghost}>
+        <Text style={styles.ghostText}>{title}</Text>
+      </View>
+    </PressableScale>
   );
 }
 
@@ -64,5 +71,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   outlineText: { color: Colors.primary, fontSize: 16, fontWeight: '600' },
+  ghost: { alignItems: 'center' },
   ghostText: { color: Colors.primary, fontSize: 15, fontWeight: '600' },
 });

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Platform,
+  RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -12,6 +12,7 @@ import { fetchSummary } from '../../hooks/useStats';
 import { supabase } from '../../lib/supabase';
 import { SummaryCard } from '../../components/cards/SummaryCard';
 import { Card } from '../../components/ui/Card';
+import { PressableScale } from '../../components/ui/PressableScale';
 import { WeatherWidget } from '../../components/widgets/WeatherWidget';
 import { Colors, Spacing, Typography, Radius } from '../../constants/theme';
 
@@ -204,7 +205,7 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>오늘의 요약</Text>
           <View style={styles.cardRow}>
-            <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.8} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'day' } } as any)}>
+            <PressableScale style={{ flex: 1 }} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'day' } } as any)}>
               <SummaryCard
                 title="오늘 수확량"
                 value={summary.totalHarvestToday.toLocaleString()}
@@ -214,9 +215,9 @@ export default function HomeScreen() {
                 icon="blueberry"
                 color={Colors.primary}
               />
-            </TouchableOpacity>
+            </PressableScale>
             <View style={{ width: Spacing.sm }} />
-            <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.8} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'day' } } as any)}>
+            <PressableScale style={{ flex: 1 }} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'day' } } as any)}>
               <SummaryCard
                 title="오늘 매출"
                 value={(summary.totalRevenueToday / 10000).toFixed(1)}
@@ -226,10 +227,10 @@ export default function HomeScreen() {
                 icon="money-wavy"
                 color={Colors.success}
               />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
           <View style={styles.cardRow}>
-            <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.8} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'week' } } as any)}>
+            <PressableScale style={{ flex: 1 }} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'week' } } as any)}>
               <SummaryCard
                 title="이번 주 수확"
                 value={summary.totalHarvestWeek.toLocaleString()}
@@ -239,9 +240,9 @@ export default function HomeScreen() {
                 icon="package"
                 color={Colors.danger}
               />
-            </TouchableOpacity>
+            </PressableScale>
             <View style={{ width: Spacing.sm }} />
-            <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.8} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'week' } } as any)}>
+            <PressableScale style={{ flex: 1 }} onPress={() => router.push({ pathname: '/(tabs)/statistics', params: { period: 'week' } } as any)}>
               <SummaryCard
                 title="이번 주 매출"
                 value={(summary.totalRevenueWeek / 10000).toFixed(1)}
@@ -251,7 +252,7 @@ export default function HomeScreen() {
                 icon="trend-up"
                 color={Colors.warning}
               />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
 
@@ -264,29 +265,16 @@ export default function HomeScreen() {
         {/* 4. 빠른 메뉴 */}
         <View style={[styles.section, { marginBottom: Spacing.xl }]}>
           <Text style={styles.sectionTitle}>빠른 메뉴</Text>
-          {Platform.OS === 'web' ? (
-            <View style={styles.quickMenuRowWeb}>
-              {QUICK_MENUS.map((item) => (
-                <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress} style={styles.quickBtnWeb}>
-                  <Card style={styles.quickCardWeb}>
-                    <PhIcon name={item.iconName as any} size={26} color={item.color} style={{ marginBottom: 6 }} weight={item.weight} />
-                    <Text style={styles.quickLabel}>{item.label}</Text>
-                  </Card>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickMenuRow}>
-              {QUICK_MENUS.map((item) => (
-                <TouchableOpacity key={item.label} activeOpacity={0.8} onPress={item.onPress}>
-                  <Card style={styles.quickCard}>
-                    <PhIcon name={item.iconName as any} size={26} color={item.color} style={{ marginBottom: 6 }} weight={item.weight} />
-                    <Text style={styles.quickLabel}>{item.label}</Text>
-                  </Card>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
+          <View style={styles.quickMenuRow}>
+            {QUICK_MENUS.map((item) => (
+              <PressableScale key={item.label} onPress={item.onPress} style={styles.quickBtn}>
+                <Card style={styles.quickCard}>
+                  <PhIcon name={item.iconName as any} size={26} color={item.color} style={{ marginBottom: 6 }} weight={item.weight as any} />
+                  <Text style={styles.quickLabel} numberOfLines={1}>{item.label}</Text>
+                </Card>
+              </PressableScale>
+            ))}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -353,12 +341,9 @@ const styles = StyleSheet.create({
   },
   todoMoreBtn: { paddingVertical: 10, alignItems: 'center' },
   todoMoreText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
-  // Quick menu
-  quickMenuRow: { gap: Spacing.sm, paddingRight: Spacing.sm },
-  quickCard: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, width: 80 },
-  quickMenuRowWeb: { flexDirection: 'row', gap: Spacing.sm },
-  quickBtnWeb: { flex: 1 },
-  quickCardWeb: { alignItems: 'center', paddingVertical: 18 },
-  quickEmoji: {},
+  // Quick menu — 5개 균등 분할 (web/native 동일)
+  quickMenuRow: { flexDirection: 'row', gap: Spacing.sm },
+  quickBtn: { flex: 1 },
+  quickCard: { alignItems: 'center', paddingVertical: 16, paddingHorizontal: 4 },
   quickLabel: { fontSize: 11, fontWeight: '700', color: Colors.text, textAlign: 'center' },
 });

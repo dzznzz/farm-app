@@ -4,6 +4,7 @@ import {
   House, ClipboardText, ChartBar, PencilSimple, DotsThree,
 } from 'phosphor-react-native';
 import { Colors } from '../../constants/theme';
+import { hapticLight } from '../../lib/haptics';
 
 type TabIconName = 'house' | 'clipboard-text' | 'chart-bar' | 'pencil-simple' | 'dots-three';
 
@@ -27,6 +28,9 @@ function TabIcon({ iconName, focused }: { iconName: TabIconName; focused: boolea
 export default function TabsLayout() {
   return (
     <Tabs
+      screenListeners={{
+        tabPress: () => hapticLight(),
+      }}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: Colors.primary,

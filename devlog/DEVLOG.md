@@ -15,6 +15,39 @@
 
 ---
 
+## 2026-06-18 — 14차 작업 (Haptic 피드백 + press scale)
+
+### TO-BE 로드맵 4·5 적용
+
+**4. Haptic 피드백 (`expo-haptics`)**
+- 신규 `lib/haptics.ts` — `hapticLight` / `hapticMedium` / `hapticSelection` / `hapticSuccess` / `hapticError` 래퍼. web에서는 진동 API가 없어 no-op, 에러도 전부 무시하여 UI 흐름을 막지 않음.
+- 하단 탭 전환: `(tabs)/_layout.tsx`의 `screenListeners.tabPress`에 light 햅틱.
+- 공용 `Button`: primary는 medium, outline/ghost는 light 햅틱.
+- 입력 화면: 세그먼트 탭 전환(selection) / FAB(light) / 저장(success) / 삭제(error).
+
+**5. press scale (`scale: 0.97`)**
+- 신규 `components/ui/PressableScale.tsx` — 누르면 spring으로 살짝 줄어드는 `TouchableOpacity` 드롭인. 햅틱(`light`/`medium`/`none`)을 prop으로 통합.
+- 홈 화면 요약 카드 4종 + 빠른 메뉴(web/native) 터치를 `PressableScale`로 교체.
+- `Button`도 `PressableScale` 기반으로 리팩터 → 전 화면 버튼에 press scale + 햅틱 자동 적용.
+
+### 후속 수정 (레이아웃 회귀 + 관리자 모바일 차단 복원)
+
+**홈 요약 카드 사이징 깨짐 수정**
+- 원인: `PressableScale`이 `style`(특히 `flex: 1`)을 바깥 `Pressable`이 아니라 안쪽 `Animated.View`에만 적용 → row 안에서 카드가 균등하게 늘어나지 않음.
+- `Animated.createAnimatedComponent(Pressable)`로 바꿔 `style`(레이아웃 + transform)을 `Pressable` 본체에 직접 적용 → `TouchableOpacity`와 동일 동작 복원.
+
+**빠른 메뉴 버튼 크기 통일**
+- 기존 web=flex 5등분 / native=가로 스크롤 + 고정 `width:80` 분기를 제거하고, **web/native 모두 `flex: 1` 5등분**으로 통일(라벨 `numberOfLines={1}`).
+
+**관리자 데이터 관리 PC 전용 복원** (`(tabs)/more.tsx`)
+- `isAdmin = userRole === 'admin'` → `userRole === 'admin' && !isMobile`로 되돌림.
+- 모바일에서는 관리자 메뉴 카드 자체를 숨겨 진입 차단. 배지 문구 `관리자 메뉴 · PC 전용`으로 복원. (PC 브라우저는 `Platform.OS === 'web'`이라 그대로 표시됨)
+
+### 기타
+- 프로젝트 응답 언어를 한국어로 고정 (`AGENTS.md`에 규칙 추가).
+
+---
+
 ## 2026-06-17 — 13차 작업 (통계 UI 개선 + 코드 테이블 common_code 통합)
 
 ### A. 통계 UI 개선 (TO-BE 로드맵 1·2·3)

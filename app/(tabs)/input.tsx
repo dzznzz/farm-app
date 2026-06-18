@@ -14,6 +14,7 @@ import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { InputFormModal } from '../../components/modals/InputFormModal';
 import { RecordDetailModal, DisplayRecord } from '../../components/modals/RecordDetailModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
+import { hapticSelection, hapticLight, hapticSuccess, hapticError } from '../../lib/haptics';
 
 type TabType = 'harvest' | 'sales' | 'other';
 
@@ -248,6 +249,7 @@ export default function InputScreen() {
     const table = type === 'harvest' ? 'harvest_records'
       : type === 'sales' ? 'sales_records' : 'other_records';
     await supabase.from(table).delete().in('id', deleteTarget.map(r => r.id));
+    hapticError();
     setDeleteTarget(null);
     loadRecords(date);
   };
@@ -280,7 +282,7 @@ export default function InputScreen() {
           {TABS.map((t) => (
             <TouchableOpacity key={t.key}
               style={[styles.tabBtn, tab === t.key && styles.tabActive]}
-              onPress={() => setTab(t.key)}>
+              onPress={() => { hapticSelection(); setTab(t.key); }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <PhIcon name={t.icon as any} size={14} color={tab === t.key ? t.color : Colors.textSub} />
                 <Text style={[styles.tabText, tab === t.key && { color: t.color, fontWeight: '700' }]}>
@@ -521,6 +523,7 @@ export default function InputScreen() {
 
       {/* FAB */}
       <TouchableOpacity style={styles.fab} onPress={() => {
+        hapticLight();
         setGroupEditRecords(undefined);
         setEditRecord(undefined);
         setShowForm(true);
@@ -537,7 +540,7 @@ export default function InputScreen() {
         editRecord={editRecord}
         groupEditRecords={groupEditRecords}
         onClose={() => { setShowForm(false); setEditRecord(undefined); setGroupEditRecords(undefined); }}
-        onSaved={() => { loadRecords(date); }}
+        onSaved={() => { hapticSuccess(); loadRecords(date); }}
       />
 
       {/* 개별 레코드 상세 (RecordDetailModal은 그룹 수정 폼에서 대체됨, 필요 시 유지) */}

@@ -38,7 +38,8 @@ export default function MoreScreen() {
       .then(({ data }) => { if (data?.role) setUserRole(data.role); });
   }, [user]);
 
-  const isAdmin = userRole === 'admin';
+  // 관리자 데이터 관리는 PC 전용 — 모바일에서는 메뉴 자체를 숨겨 진입 차단
+  const isAdmin = userRole === 'admin' && !isMobile;
 
   if (page === 'chatbot') return <ChatbotPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'harvest') return <HarvestPage onBack={() => setPage('menu')} userId={user?.id} />;
@@ -100,7 +101,7 @@ export default function MoreScreen() {
 
         {isAdmin && (
           <Card style={styles.adminMenuCard}>
-            <Text style={styles.adminBadge}>관리자 메뉴{isMobile ? ' · PC에서만 수정 가능' : ''}</Text>
+            <Text style={styles.adminBadge}>관리자 메뉴 · PC 전용</Text>
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => setPage('adminData')}
