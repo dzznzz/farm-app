@@ -15,6 +15,26 @@
 
 ---
 
+## 2026-06-18 — 19차 작업 (거래처 관리)
+
+### TO-BE 로드맵 11 적용 — 거래처(판매처) 관리 + 판매 입력 연동
+
+**DB / 데이터**
+- 마이그레이션 `014_clients`: `clients` 테이블(user별, name·channel('online'|'offline')·commission_type('%'|'원')·commission_value). RLS는 `auth.uid() = user_id`.
+- `lib/clients.ts`: 거래처 CRUD + `listClientsByChannel`(판매 구매자 선택지용).
+
+**거래처 관리 페이지 (`ClientsPage`)**
+- 농장 설정과 동일한 카드 CRUD 패턴. 필드: 이름 / 구분(온라인·오프라인 칩) / 수수료(비율%·금액원 칩 + 값). 저장·삭제는 전역 토스트.
+- `more.tsx` 더보기 메뉴에 "거래처 관리"(handshake) 추가. 기존 "연락처 관리"는 지인 연락처로 설명 분리.
+
+**판매 입력 연동 (`InputFormModal`)**
+- 판매 유형이 온라인/오프라인이면 구매자 영역이 **해당 채널 거래처 select**(`SelectModal`, 직접 입력 허용)로 전환. 거래처 선택 시 그 거래처의 수수료(type/value)를 자동으로 채움.
+- 과거 기록 유지: 판매 기록(`sales_records`)은 입력 당시 commission·buyer를 그대로 저장하므로 거래처를 나중에 수정해도 과거 기록/통계 불변(추가 작업 없음).
+
+> ⚠️ 배포 시 Supabase에 `supabase/migrations/supabase_migration_014_clients.sql` 적용 필요.
+
+---
+
 ## 2026-06-18 — 18차 작업 (입력 폼 내역 단계 개편)
 
 ### TO-BE 로드맵 10 적용 — 품종·사이즈 선택 UI → "+ 내역 추가" 통합 모달

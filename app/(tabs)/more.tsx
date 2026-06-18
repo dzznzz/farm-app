@@ -15,9 +15,10 @@ import { HarvestPage } from '../../components/pages/HarvestPage';
 import { FarmSettingsPage } from '../../components/pages/FarmSettingsPage';
 import { ProfileEditPage } from '../../components/pages/ProfileEditPage';
 import { ContactsPage } from '../../components/pages/ContactsPage';
+import { ClientsPage } from '../../components/pages/ClientsPage';
 import { AdminDataPage } from '../../components/pages/AdminDataPage';
 
-type PageType = 'menu' | 'chatbot' | 'harvest' | 'farmSettings' | 'profileEdit' | 'contacts' | 'adminData';
+type PageType = 'menu' | 'chatbot' | 'harvest' | 'farmSettings' | 'profileEdit' | 'contacts' | 'clients' | 'adminData';
 
 const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 
@@ -46,6 +47,7 @@ export default function MoreScreen() {
   if (page === 'farmSettings') return <FarmSettingsPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'profileEdit') return <ProfileEditPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'contacts') return <ContactsPage onBack={() => setPage('menu')} userId={user?.id} />;
+  if (page === 'clients') return <ClientsPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'adminData') return <AdminDataPage onBack={() => setPage('menu')} readOnly={isMobile} />;
 
   return (
@@ -79,8 +81,9 @@ export default function MoreScreen() {
         <Card style={styles.menuCardSecond}>
           {[
             { icon: 'farm', label: '농장 설정', desc: '농장 및 작물 관리', page: 'farmSettings' as PageType },
+            { icon: 'handshake', label: '거래처 관리', desc: '판매처 · 수수료 관리', page: 'clients' as PageType },
             { icon: 'user-circle-gear', label: '프로필 수정', desc: '계정 정보 변경', page: 'profileEdit' as PageType },
-            { icon: 'device-mobile', label: '연락처 관리', desc: '거래처 및 지인 연락처', page: 'contacts' as PageType },
+            { icon: 'device-mobile', label: '연락처 관리', desc: '지인 연락처', page: 'contacts' as PageType },
           ].map((item, i) => (
             <TouchableOpacity
               key={item.label}

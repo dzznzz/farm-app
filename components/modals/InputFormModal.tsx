@@ -5,7 +5,9 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { listCodes, listVarietiesByCropName, listSizesByCropName } from '../../lib/commonCode';
+import { listClients, Client, ClientChannel } from '../../lib/clients';
 import { CalendarModal } from './CalendarModal';
+import { SelectModal } from './SelectModal';
 import { PhIcon } from '../ui/PhIcon';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { DisplayRecord } from './RecordDetailModal';
@@ -399,6 +401,10 @@ export function InputFormModal({
   const [otherExtraCost, setOtherExtraCost] = useState('');
   const [note, setNote] = useState('');
 
+  // 거래처(판매 구매자 선택지)
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientPickerVisible, setClientPickerVisible] = useState(false);
+
   // DB options
   const [cropOptions, setCropOptions] = useState<string[]>([]);
   const [showCropInput, setShowCropInput] = useState(false);
@@ -513,6 +519,7 @@ export function InputFormModal({
       if (rows.length) setUnitOptions(rows.map((u) => u.name));
     });
     listCodes('crop').then((rows) => setCropOptions(rows.map((c) => c.name)));
+    if (userId) listClients(userId).then(setClients);
   }, [visible]);
 
   useEffect(() => {
@@ -545,6 +552,19 @@ export function InputFormModal({
   }, [cropType]);
 
   const resolvedSaleType = saleType === '기타' ? customSaleType.trim() : saleType;
+
+  // 판매 유형이 온라인/오프라인이면 해당 채널 거래처를 구매자 선택지로 노출
+  const buyerChannel: ClientChannel | null =
+    resolvedSaleType === '온라인' ? 'online' : resolvedSaleType === '오프라인' ? 'offline' : null;
+  const channelClients = buyerChannel ? clients.filter((c) => c.channel === buyerChannel) : [];
+  const selectClient = (nameSel: string) => {
+    setBuyer(nameSel);
+    const cl = channelClients.find((c) => c.name === nameSel);
+    if (cl && cl.commission_value > 0) {
+      setCommissionType(cl.commission_type);
+      setCommissionRate(String(cl.commission_value));
+    }
+  };
 
   const isStepValid = (id: string): boolean => {
     if (id === 'date' || id === 'otherType' || id === 'farm') return true;
@@ -1366,8 +1386,20 @@ export function InputFormModal({
                           placeholder="택배비, 포장비 등" placeholderTextColor={Colors.textLight}
                           keyboardType="decimal-pad" />
                         <Text style={styles.formLabel}>구매자</Text>
-                        <TextInput style={styles.input} value={buyer} onChangeText={setBuyer}
-                          placeholder="구매자명 또는 판매처" placeholderTextColor={Colors.textLight} />
+                        {buyerChannel ? (
+                          <TouchableOpacity style={[styles.fieldBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]} onPress={() => setClientPickerVisible(true)}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <PhIcon name="handshake" size={16} color={Colors.primary} />
+                              <Text style={[styles.fieldBtnText, !buyer && { color: Colors.textLight }]}>
+                                {buyer || `${resolvedSaleType} 거래처 선택`}
+                              </Text>
+                            </View>
+                            <Text style={{ color: Colors.textSub, fontSize: 14 }}>▾</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TextInput style={styles.input} value={buyer} onChangeText={setBuyer}
+                            placeholder="구매자명 또는 판매처" placeholderTextColor={Colors.textLight} />
+                        )}
                       </>
                     )}
                     {tab === 'harvest' && (
@@ -1420,6 +1452,16 @@ export function InputFormModal({
       <CalendarModal visible={showCalendar} value={date}
         onSelect={(d) => { setDate(d); setShowCalendar(false); if (!isEdit && !isGroupEdit) advanceStep(); }}
         onClose={() => setShowCalendar(false)} />
+
+      <SelectModal
+        visible={clientPickerVisible}
+        title={`${resolvedSaleType} 거래처 선택`}
+        options={channelClients.map((c) => c.name)}
+        value={buyer}
+        allowCustom
+        onSelect={selectClient}
+        onClose={() => setClientPickerVisible(false)}
+      />
 
       <EntryDetailModal
         visible={entryModalVisible}
