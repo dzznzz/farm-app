@@ -24,6 +24,7 @@ import { CalendarModal } from '../../components/modals/CalendarModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { PeriodType, DailyStat } from '../../types';
 import { PhIcon } from '../../components/ui/PhIcon';
+import { hapticLight } from '../../lib/haptics';
 
 const PERIODS: { key: PeriodType; label: string }[] = [
   { key: 'day', label: '일별' },
@@ -211,6 +212,10 @@ export default function StatisticsScreen() {
   const [chartType, setChartType] = useState<'harvest' | 'revenue'>('harvest');
   const [donutTab, setDonutTab] = useState<'crop' | 'variety' | 'size'>('crop');
 
+  // 차트 인터랙션: 탭으로 선택한 항목 (도넛 조각 / 막대)
+  const [selectedDonut, setSelectedDonut] = useState<number | null>(null);
+  const [selectedBar, setSelectedBar] = useState<number | null>(null);
+
   const spinAnim = useRef(new Animated.Value(0)).current;
   const [isSpinning, setIsSpinning] = useState(false);
 
@@ -354,6 +359,27 @@ export default function StatisticsScreen() {
   if (othersValue > 0.0001) {
     pieData.push({ value: othersValue, color: DONUT_OTHERS_COLOR, label: '기타' });
   }
+
+  // 탭/데이터가 바뀌면 차트 선택 해제
+  useEffect(() => { setSelectedDonut(null); }, [donutTab, donutData]);
+  useEffect(() => { setSelectedBar(null); }, [chartType, barStats]);
+
+  // 선택된 차트 항목 파생값
+  const selectedDonutItem = selectedDonut != null && selectedDonut < pieData.length ? pieData[selectedDonut] : null;
+  const selectedDonutPct = selectedDonutItem && donutTotal > 0
+    ? ((selectedDonutItem.value / donutTotal) * 100).toFixed(1) : null;
+  const toggleDonut = (i: number) => { hapticLight(); setSelectedDonut((prev) => (prev === i ? null : i)); };
+
+  const selectedBarItem = selectedBar != null && selectedBar < chartData.length ? chartData[selectedBar] : null;
+  const barTotal = chartData.reduce((s, d) => s + d.value, 0);
+  const selectedBarPct = selectedBarItem && barTotal > 0
+    ? ((selectedBarItem.value / barTotal) * 100).toFixed(1) : null;
+  const selectedBarDetail = selectedBarItem
+    ? (chartType === 'harvest'
+        ? `${selectedBarItem.value.toLocaleString()}kg`
+        : `${selectedBarItem.value.toFixed(1)}만원`)
+    : null;
+  const toggleBar = (i: number) => { hapticLight(); setSelectedBar((prev) => (prev === i ? null : i)); };
 
   // 도넛 회전 애니메이션
   useEffect(() => {
@@ -545,11 +571,25 @@ export default function StatisticsScreen() {
             <View style={styles.donutBody}>
               {Platform.OS !== 'web' ? (
                 <Animated.View style={{ transform: [{ rotate: donutSpin }] }}>
-                  <PieChart donut data={pieData} radius={100} innerRadius={60} showText={false}
+                  <PieChart donut
+                    data={pieData.map((p, i) => (i === selectedDonut ? { ...p, focused: true } : p))}
+                    radius={100} innerRadius={60} showText={false}
+                    extraRadius={12}
+                    onPress={(_item: any, index: number) => toggleDonut(index)}
                     centerLabelComponent={() => (
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
-                        <Text style={{ fontSize: 11, color: Colors.textSub }}>kg</Text>
+                        {selectedDonutItem ? (
+                          <>
+                            <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: selectedDonutItem.color, maxWidth: 88, textAlign: 'center' }}>{selectedDonutItem.label}</Text>
+                            <Text style={{ fontSize: 16, fontWeight: '800', color: Colors.text }}>{selectedDonutItem.value.toLocaleString()}</Text>
+                            <Text style={{ fontSize: 11, color: Colors.textSub }}>kg · {selectedDonutPct}%</Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
+                            <Text style={{ fontSize: 11, color: Colors.textSub }}>kg</Text>
+                          </>
+                        )}
                       </View>
                     )}
                   />
@@ -571,8 +611,10 @@ export default function StatisticsScreen() {
                               <Circle
                                 key={i} cx={100} cy={100} r={r} fill="none"
                                 stroke={item.color} strokeWidth={40}
+                                opacity={selectedDonut === null || i === selectedDonut ? 1 : 0.3}
                                 strokeDasharray={`${frac * c} ${c}`}
                                 strokeDashoffset={-acc * c}
+                                onPress={() => toggleDonut(i)}
                               />
                             );
                             acc += frac;
@@ -583,8 +625,18 @@ export default function StatisticsScreen() {
                     </Svg>
                   </Animated.View>
                   <View style={styles.webDonutCenter} pointerEvents="none">
-                    <Text style={{ fontSize: 18, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
-                    <Text style={{ fontSize: 12, color: Colors.textSub }}>kg</Text>
+                    {selectedDonutItem ? (
+                      <>
+                        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '700', color: selectedDonutItem.color, maxWidth: 96, textAlign: 'center' }}>{selectedDonutItem.label}</Text>
+                        <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.text }}>{selectedDonutItem.value.toLocaleString()}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.textSub }}>kg · {selectedDonutPct}%</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: Colors.primary }}>{donutTotal.toLocaleString()}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.textSub }}>kg</Text>
+                      </>
+                    )}
                   </View>
                 </View>
               )}
@@ -596,13 +648,16 @@ export default function StatisticsScreen() {
                 </View>
                 {pieData.map((item, i) => {
                   const pct = donutTotal > 0 ? ((item.value / donutTotal) * 100).toFixed(1) : '0';
+                  const isSel = i === selectedDonut;
                   return (
-                    <View key={i} style={styles.donutTableRow}>
+                    <TouchableOpacity key={i} activeOpacity={0.7}
+                      style={[styles.donutTableRow, isSel && styles.donutTableRowActive]}
+                      onPress={() => toggleDonut(i)}>
                       <View style={[styles.donutDot, { backgroundColor: item.color }]} />
-                      <Text style={styles.donutTableLabel} numberOfLines={1}>{item.label}</Text>
-                      <Text style={styles.donutTableValue}>{item.value.toLocaleString()}kg</Text>
-                      <Text style={styles.donutTablePct}>{pct}%</Text>
-                    </View>
+                      <Text style={[styles.donutTableLabel, isSel && styles.donutTableLabelActive]} numberOfLines={1}>{item.label}</Text>
+                      <Text style={[styles.donutTableValue, isSel && { color: item.color, fontWeight: '800' }]}>{item.value.toLocaleString()}kg</Text>
+                      <Text style={[styles.donutTablePct, isSel && { color: item.color, fontWeight: '800' }]}>{pct}%</Text>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -635,19 +690,34 @@ export default function StatisticsScreen() {
             <BarChartSkeleton />
           ) : (
             <View style={styles.hBarChart}>
-              {chartData.map((d, i) => (
-                <View key={i} style={styles.hBarRow}>
-                  <Text style={styles.hBarLabel}>{d.label}</Text>
-                  <View style={styles.hBarAxis} />
-                  <View style={styles.hBarTrack}>
-                    <View style={[styles.hBarFill, {
-                      width: `${(d.value / chartMax) * 100}%`,
-                      backgroundColor: d.frontColor,
-                    }]} />
-                  </View>
-                  <Text style={styles.hBarValue}>{d.value > 0 ? d.valueText : '−'}</Text>
-                </View>
-              ))}
+              {chartData.map((d, i) => {
+                const hasVal = d.value > 0;
+                const isSel = i === selectedBar;
+                return (
+                  <TouchableOpacity key={i} activeOpacity={hasVal ? 0.7 : 1} disabled={!hasVal}
+                    style={[styles.hBarRow, isSel && styles.hBarRowActive]}
+                    onPress={() => toggleBar(i)}>
+                    <Text style={[styles.hBarLabel, isSel && styles.hBarLabelActive]}>{d.label}</Text>
+                    <View style={styles.hBarAxis} />
+                    <View style={styles.hBarTrack}>
+                      <View style={[styles.hBarFill, {
+                        width: `${(d.value / chartMax) * 100}%`,
+                        backgroundColor: isSel ? Colors.primaryDark : d.frontColor,
+                      }]} />
+                    </View>
+                    <Text style={[styles.hBarValue, isSel && styles.hBarValueActive]}>{d.value > 0 ? d.valueText : '−'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+          {selectedBarItem && (
+            <View style={styles.barTooltip}>
+              <View style={styles.barTooltipDot} />
+              <Text style={styles.barTooltipText}>
+                <Text style={styles.barTooltipLabel}>{selectedBarItem.label}</Text>
+                {`  ·  ${selectedBarDetail}  ·  전체의 ${selectedBarPct}%`}
+              </Text>
             </View>
           )}
         </Card>
@@ -901,7 +971,9 @@ const styles = StyleSheet.create({
   donutTableHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: Colors.primaryUltraLight },
   donutTableHeaderText: { fontSize: 12, fontWeight: '700', color: Colors.textSub },
   donutTableRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderTopWidth: 1, borderTopColor: Colors.border },
+  donutTableRowActive: { backgroundColor: Colors.primaryUltraLight },
   donutTableLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: Colors.text },
+  donutTableLabelActive: { fontWeight: '800', color: Colors.text },
   donutTableValue: { width: 76, fontSize: 13, fontWeight: '700', color: Colors.primaryDark, textAlign: 'right' },
   donutTablePct: { width: 50, fontSize: 12, color: Colors.textSub, textAlign: 'right', fontWeight: '600' },
   emptyChart: { alignItems: 'center', paddingVertical: 32 },
@@ -941,8 +1013,10 @@ const styles = StyleSheet.create({
   priceChipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
   // 가로 막대 차트 (web)
   hBarChart: { gap: 8, paddingVertical: 4 },
-  hBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  hBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2, borderRadius: Radius.sm },
+  hBarRowActive: { backgroundColor: Colors.primaryUltraLight },
   hBarLabel: { width: 44, fontSize: 11, color: Colors.textSub, textAlign: 'right' },
+  hBarLabelActive: { color: Colors.primaryDark, fontWeight: '800' },
   hBarAxis: { width: 2, alignSelf: 'stretch', backgroundColor: Colors.border },
   hBarTrack: {
     flex: 1, height: 18, backgroundColor: Colors.primaryUltraLight,
@@ -950,6 +1024,15 @@ const styles = StyleSheet.create({
   },
   hBarFill: { height: '100%', borderTopRightRadius: 9, borderBottomRightRadius: 9 },
   hBarValue: { width: 56, fontSize: 11, fontWeight: '700', color: Colors.text },
+  hBarValueActive: { color: Colors.primaryDark, fontWeight: '800' },
+  barTooltip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: Spacing.sm, paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
+  },
+  barTooltipDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primaryDark },
+  barTooltipText: { flex: 1, fontSize: 12, color: Colors.textSub },
+  barTooltipLabel: { fontSize: 13, fontWeight: '800', color: Colors.primaryDark },
   breakdownBtn: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginHorizontal: Spacing.md, marginTop: Spacing.sm,
