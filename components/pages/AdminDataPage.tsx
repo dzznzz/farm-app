@@ -45,6 +45,7 @@ export function AdminDataPage({ onBack, readOnly = false }: Props) {
 
   const [selectedMain, setSelectedMain] = useState<MainCode>('crop');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [cropPickerOpen, setCropPickerOpen] = useState(false);
 
   const [crops, setCrops] = useState<CommonCodeRow[]>([]);     // 부모 작물 목록(+ 작물 항목 자체)
   const [selectedCrop, setSelectedCrop] = useState('');        // 선택된 작물 desc_code
@@ -156,22 +157,15 @@ export function AdminDataPage({ onBack, readOnly = false }: Props) {
             </TouchableOpacity>
           </View>
 
-          {/* 품종·사이즈: 부모 작물 선택 */}
+          {/* 품종·사이즈: 부모 작물 선택 (관리 항목과 동일한 select 형식) */}
           {isHierarchical && (
             crops.length > 0 ? (
-              <View style={styles.cropSelector}>
-                <Text style={styles.cropSelectorLabel}>작물</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {crops.map((c) => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.cropChip, selectedCrop === c.desc_code && styles.cropChipActive]}
-                      onPress={() => setSelectedCrop(c.desc_code)}
-                    >
-                      <Text style={[styles.cropChipText, selectedCrop === c.desc_code && styles.cropChipTextActive]}>{c.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+              <View style={styles.cropSelectBlock}>
+                <Text style={styles.selectLabel}>작물</Text>
+                <TouchableOpacity style={styles.mainSelect} onPress={() => setCropPickerOpen(true)} activeOpacity={0.7}>
+                  <Text style={styles.mainSelectValue}>{selectedCropName || '작물 선택'}</Text>
+                  <Text style={styles.caret}>▾</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.emptyHint}>
@@ -251,6 +245,18 @@ export function AdminDataPage({ onBack, readOnly = false }: Props) {
         }}
         onClose={() => setPickerOpen(false)}
       />
+
+      <SelectModal
+        visible={cropPickerOpen}
+        title="작물 선택"
+        options={crops.map((c) => c.name)}
+        value={selectedCropName}
+        onSelect={(name) => {
+          const c = crops.find((x) => x.name === name);
+          if (c) setSelectedCrop(c.desc_code);
+        }}
+        onClose={() => setCropPickerOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -291,16 +297,5 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: { color: Colors.danger, fontSize: 13, fontWeight: '600' },
   emptyHint: { alignItems: 'center', marginTop: 40 },
-  cropSelector: {
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.sm,
-  },
-  cropSelectorLabel: { ...Typography.label, marginBottom: 6 },
-  cropChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full,
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.background,
-    marginRight: 8,
-  },
-  cropChipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
-  cropChipText: { fontSize: 13, color: Colors.textSub, fontWeight: '500' },
-  cropChipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
+  cropSelectBlock: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.sm },
 });
