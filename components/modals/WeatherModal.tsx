@@ -160,27 +160,20 @@ export function WeatherModal({ visible, onClose, initialWeather, initialCity }: 
           {tab === 'current' && weather && !loading && (
             <>
               <Text style={styles.sectionLabel}>시간별 예보</Text>
-              {Platform.OS === 'web' ? (
-                <View style={styles.hourlyRowWeb}>
-                  {weather.hourly.map((h, i) => (
-                    <Card key={i} style={styles.hourlyCardWeb}>
-                      <Text style={styles.hourlyTime}>{formatHour(h.time)}</Text>
-                      <PhIcon name={getWeatherIconName(h.icon) as any} size={22} color={Colors.primary} style={{ marginBottom: 6 }} />
-                      <Text style={styles.hourlyTemp}>{h.temp}°</Text>
-                    </Card>
-                  ))}
-                </View>
-              ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hourlyScroll}>
-                  {weather.hourly.map((h, i) => (
-                    <Card key={i} style={styles.hourlyCard}>
-                      <Text style={styles.hourlyTime}>{formatHour(h.time)}</Text>
-                      <PhIcon name={getWeatherIconName(h.icon) as any} size={22} color={Colors.primary} style={{ marginBottom: 6 }} />
-                      <Text style={styles.hourlyTemp}>{h.temp}°</Text>
-                    </Card>
-                  ))}
-                </ScrollView>
-              )}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={Platform.OS === 'web'}
+                style={styles.hourlyScroll}
+                contentContainerStyle={styles.hourlyScrollContent}
+              >
+                {weather.hourly.map((h, i) => (
+                  <Card key={i} style={styles.hourlyCard}>
+                    <Text style={styles.hourlyTime}>{formatHour(h.time)}</Text>
+                    <PhIcon name={getWeatherIconName(h.icon) as any} size={22} color={Colors.primary} style={{ marginBottom: 6 }} />
+                    <Text style={styles.hourlyTemp}>{h.temp}°</Text>
+                  </Card>
+                ))}
+              </ScrollView>
 
               <Text style={styles.sectionLabel}>주간 예보</Text>
               <Card style={styles.dailyCard}>
@@ -288,10 +281,9 @@ const styles = StyleSheet.create({
   tabText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
   tabTextActive: { color: '#fff' },
   sectionLabel: { ...Typography.label, paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
-  hourlyScroll: { paddingLeft: Spacing.lg },
+  hourlyScroll: {},
+  hourlyScrollContent: { paddingHorizontal: Spacing.lg },
   hourlyCard: { alignItems: 'center', marginRight: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, minWidth: 72 },
-  hourlyRowWeb: { flexDirection: 'row', paddingHorizontal: Spacing.lg, gap: Spacing.sm },
-  hourlyCardWeb: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm, paddingVertical: Spacing.sm, minWidth: 72 },
   hourlyTime: { fontSize: 11, color: Colors.textSub, marginBottom: 6 },
   hourlyIcon: { fontSize: 22, marginBottom: 6 },
   hourlyTemp: { fontSize: 14, fontWeight: '700', color: Colors.text },

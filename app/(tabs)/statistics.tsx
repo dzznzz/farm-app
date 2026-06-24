@@ -21,6 +21,7 @@ import { SummaryCardSkeleton, BarChartSkeleton } from '../../components/ui/Skele
 import { BreakdownModal } from '../../components/modals/BreakdownModal';
 import { ExportModal } from '../../components/modals/ExportModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
+import { SelectModal } from '../../components/modals/SelectModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 import { PeriodType, DailyStat } from '../../types';
 import { PhIcon } from '../../components/ui/PhIcon';
@@ -239,7 +240,10 @@ export default function StatisticsScreen() {
   const [donutData, setDonutData] = useState<Awaited<ReturnType<typeof fetchBreakdown>> | null>(null);
 
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
-  const [priceFilter, setPriceFilter] = useState<string | null>(null);
+  const [priceCrop, setPriceCrop] = useState<string | null>(null);
+  const [priceVariety, setPriceVariety] = useState<string | null>(null);
+  const [priceSize, setPriceSize] = useState<string | null>(null);
+  const [priceSelectField, setPriceSelectField] = useState<'crop' | 'variety' | 'size' | null>(null);
   const [priceChartWidth, setPriceChartWidth] = useState(0);
 
   useEffect(() => {
@@ -324,17 +328,23 @@ export default function StatisticsScreen() {
   });
   const chartMax = Math.max(...chartData.map((d) => d.value), 1);
 
-  // 판매 단가: 품종·사이즈별 그룹 + 선택
-  const priceLabels = Array.from(new Set(priceHistory.map((p) => p.label)));
-  const activePriceLabel = priceFilter && priceLabels.includes(priceFilter)
-    ? priceFilter : priceLabels[0];
-  const priceChartData = priceHistory
-    .filter((p) => p.label === activePriceLabel)
-    .map((p) => ({
-      value: p.price,
-      label: p.date.slice(5),
-      dataPointText: p.price.toLocaleString(),
-    }));
+  // 판매 단가: 작물·품종·사이즈 select(데이터관리 방식)로 구분 선택
+  const ALL = '전체';
+  const priceCropOptions = [ALL, ...Array.from(new Set(priceHistory.map((p) => p.crop).filter(Boolean)))];
+  // 선택된 작물에 따라 품종 옵션 좁힘 (cascading)
+  const cropFiltered = priceHistory.filter((p) => !priceCrop || priceCrop === ALL || p.crop === priceCrop);
+  const priceVarietyOptions = [ALL, ...Array.from(new Set(cropFiltered.map((p) => p.variety).filter(Boolean)))];
+  const varietyFiltered = cropFiltered.filter((p) => !priceVariety || priceVariety === ALL || p.variety === priceVariety);
+  const priceSizeOptions = [ALL, ...Array.from(new Set(varietyFiltered.map((p) => p.size).filter(Boolean)))];
+  const sizeFiltered = varietyFiltered.filter((p) => !priceSize || priceSize === ALL || p.size === priceSize);
+  const activePriceCrop = priceCrop && priceCropOptions.includes(priceCrop) ? priceCrop : ALL;
+  const activePriceVariety = priceVariety && priceVarietyOptions.includes(priceVariety) ? priceVariety : ALL;
+  const activePriceSize = priceSize && priceSizeOptions.includes(priceSize) ? priceSize : ALL;
+  const priceChartData = sizeFiltered.map((p) => ({
+    value: p.price,
+    label: p.date.slice(5),
+    dataPointText: p.price.toLocaleString(),
+  }));
   const priceMax = Math.max(...priceChartData.map((d) => d.value), 1);
   // 차트가 카드 너비를 꽉 채우도록 포인트 간격 계산 (y축 44 + 좌우 여백 제외)
   const priceSpacing = priceChartWidth > 0 && priceChartData.length > 1
@@ -614,7 +624,7 @@ export default function StatisticsScreen() {
                                 opacity={selectedDonut === null || i === selectedDonut ? 1 : 0.3}
                                 strokeDasharray={`${frac * c} ${c}`}
                                 strokeDashoffset={-acc * c}
-                                onPress={() => toggleDonut(i)}
+                                {...({ onPress: null, onClick: () => toggleDonut(i), style: { cursor: 'pointer' } } as any)}
                               />
                             );
                             acc += frac;
@@ -796,16 +806,26 @@ export default function StatisticsScreen() {
         {priceHistory.length > 0 && (
           <Card style={styles.priceCard}>
             <Text style={[Typography.h3, { marginBottom: Spacing.sm }]}>최근 판매 단가</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.priceChips}>
-              {priceLabels.map((l) => (
-                <TouchableOpacity key={l}
-                  style={[styles.priceChip, activePriceLabel === l && styles.priceChipActive]}
-                  onPress={() => setPriceFilter(l)}>
-                  <Text style={[styles.priceChipText, activePriceLabel === l && styles.priceChipTextActive]}>{l}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={styles.priceSelectRow}>
+              <TouchableOpacity style={styles.priceSelect} activeOpacity={0.7}
+                onPress={() => { hapticLight(); setPriceSelectField('crop'); }}>
+                <Text style={styles.priceSelectLabel}>작물</Text>
+                <Text style={styles.priceSelectValue} numberOfLines={1}>{activePriceCrop}</Text>
+                <Text style={styles.priceSelectCaret}>▾</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.priceSelect} activeOpacity={0.7}
+                onPress={() => { hapticLight(); setPriceSelectField('variety'); }}>
+                <Text style={styles.priceSelectLabel}>품종</Text>
+                <Text style={styles.priceSelectValue} numberOfLines={1}>{activePriceVariety}</Text>
+                <Text style={styles.priceSelectCaret}>▾</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.priceSelect} activeOpacity={0.7}
+                onPress={() => { hapticLight(); setPriceSelectField('size'); }}>
+                <Text style={styles.priceSelectLabel}>사이즈</Text>
+                <Text style={styles.priceSelectValue} numberOfLines={1}>{activePriceSize}</Text>
+                <Text style={styles.priceSelectCaret}>▾</Text>
+              </TouchableOpacity>
+            </View>
             <View onLayout={(e) => setPriceChartWidth(e.nativeEvent.layout.width)}>
               {priceChartData.length > 0 && priceChartWidth > 0 && (
                 Platform.OS !== 'web' ? (
@@ -906,6 +926,18 @@ export default function StatisticsScreen() {
         onSelect={(d) => { setSelectedDate(d); setShowDatePicker(false); }}
         onClose={() => setShowDatePicker(false)}
       />
+      <SelectModal
+        visible={priceSelectField !== null}
+        title={priceSelectField === 'crop' ? '작물 선택' : priceSelectField === 'variety' ? '품종 선택' : '사이즈 선택'}
+        options={priceSelectField === 'crop' ? priceCropOptions : priceSelectField === 'variety' ? priceVarietyOptions : priceSizeOptions}
+        value={priceSelectField === 'crop' ? activePriceCrop : priceSelectField === 'variety' ? activePriceVariety : activePriceSize}
+        onSelect={(v) => {
+          if (priceSelectField === 'crop') { setPriceCrop(v); setPriceVariety(null); setPriceSize(null); }
+          else if (priceSelectField === 'variety') { setPriceVariety(v); setPriceSize(null); }
+          else setPriceSize(v);
+        }}
+        onClose={() => setPriceSelectField(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -1003,14 +1035,15 @@ const styles = StyleSheet.create({
   stockResultLabel: { ...Typography.bodyBold },
   stockResultValue: { fontSize: 22, fontWeight: '800' },
   priceCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
-  priceChips: { gap: 6, paddingBottom: Spacing.md },
-  priceChip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full,
+  priceSelectRow: { flexDirection: 'row', gap: 6, paddingBottom: Spacing.md },
+  priceSelect: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: Radius.md,
     borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
   },
-  priceChipActive: { backgroundColor: Colors.primaryUltraLight, borderColor: Colors.primary },
-  priceChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSub },
-  priceChipTextActive: { color: Colors.primaryDark, fontWeight: '700' },
+  priceSelectLabel: { fontSize: 11, color: Colors.textSub, fontWeight: '600' },
+  priceSelectValue: { flex: 1, fontSize: 12, color: Colors.text, fontWeight: '700' },
+  priceSelectCaret: { fontSize: 10, color: Colors.textSub },
   // 가로 막대 차트 (web)
   hBarChart: { gap: 8, paddingVertical: 4 },
   hBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2, borderRadius: Radius.sm },

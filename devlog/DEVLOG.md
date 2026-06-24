@@ -15,6 +15,30 @@
 
 ---
 
+## 2026-06-24 — 20차 작업 (TO-BE 12~15)
+
+### TO-BE 로드맵 12~15 적용 — 판매 단가 select 분리 · 수확 folding · 도넛 에러 · 날씨 스크롤
+
+**12. 최근 판매 단가 select 분리 (`statistics.tsx`, `hooks/useStats.ts`)**
+- 기존 "작물 품종 사이즈" 통합 칩 필터 제거 → **작물·품종·사이즈 3개 select 버튼**(데이터관리의 `SelectModal` 재사용)으로 분리.
+- cascading: 작물 선택 시 품종·사이즈 옵션이 좁혀지고 하위 선택 초기화. 각 항목에 "전체" 옵션 제공.
+- `PricePoint`에 `crop`/`variety`/`size` 필드 추가(기존 `label`은 유지).
+
+**13. 입력 > 수확 품종별 folding (`input.tsx`)**
+- 수확/기타 그룹 카드의 품종 블록을 판매와 동일한 **접기/펼치기 헤더**로 전환(`expandedVarieties`/`toggleVariety` 재사용, 기본 접힘).
+- 헤더에 **품종 소계**(기타 탭은 부수비용 포함)를 항상 표시 → 접혀 있어도 소계 확인 가능. 펼치면 사이즈별 상세 행 노출.
+- **전체 합계** 행은 접힘 여부와 무관하게 그대로 유지.
+
+**14. 통계 화면 콘솔 에러 수정 (`statistics.tsx`)**
+- 증상: `Unknown event handler property 'onResponderTerminate'` 경고가 화면 조회마다 반복.
+- 원인: 웹 도넛 차트의 `Circle`에 `onPress`를 주면 `react-native-svg` WebShape가 터치 responder 핸들러(`onResponderTerminate` 등)를 DOM `<circle>`에 그대로 전달 → react-dom 경고.
+- 해결: 웹 분기에서 `onPress` 대신 DOM `onClick`(+`cursor:pointer`) 사용. 단, `prepare.js`가 `onPress !== null`일 때 `onClick`을 `props.onPress`로 덮어쓰므로 `onPress: null`을 함께 넘겨 클릭 핸들러 보존(= 도넛 영역 클릭→상세 표시 기능 유지, TO-BE 18 회귀 방지).
+
+**15. 날씨 상세 모달 시간별 예보 좌우 스크롤 (`WeatherModal.tsx`)**
+- 웹에서 시간별 예보를 고정 flex-row(`hourlyRowWeb`)로 욱여넣어 우측이 잘리던 문제 → 네이티브와 동일하게 가로 `ScrollView`로 통일(웹은 스크롤바 표시). 좌우 스크롤로 전체 시간대 조회 가능.
+
+---
+
 ## 2026-06-18 — 19차 작업 (거래처 관리)
 
 ### TO-BE 로드맵 11 적용 — 거래처(판매처) 관리 + 판매 입력 연동

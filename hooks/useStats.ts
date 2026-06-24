@@ -191,6 +191,9 @@ export interface PricePoint {
   date: string;
   price: number;
   label: string;
+  crop: string;
+  variety: string;
+  size: string;
 }
 
 export async function fetchPriceHistory(
@@ -215,6 +218,9 @@ export async function fetchPriceHistory(
       date: r.date,
       price: r.price_per_unit ?? 0,
       label: [r.crop_type, r.variety, r.size].filter(Boolean).join(' '),
+      crop: r.crop_type ?? '',
+      variety: r.variety ?? '',
+      size: r.size ?? '',
     }))
     .reverse();
 }

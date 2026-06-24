@@ -463,38 +463,37 @@ export default function InputScreen() {
                     {group.varieties.map((vg, vi) => {
                       const varietyTotal = vg.sizes.reduce((sum, sr) => sum + sr.quantity, 0);
                       const varietyUnit = vg.sizes[0]?.unit ?? 'kg';
+                      const varietyExtraCost = vg.sizes.reduce((s, sr) => s + (sr.extraCost ?? 0), 0);
+                      const vKey = `h${gi}-${vg.variety}-${vi}`;
+                      const isOpen = expandedVarieties.has(vKey);
                       return (
-                        <View key={`${vg.variety}-${vi}`}
-                          style={[styles.varietyBlock, vi > 0 && styles.varietyBlockSep]}>
-                          {vg.variety !== '' && <Text style={styles.varietyLabel}>{vg.variety}</Text>}
-                          {vg.sizes.map((sr) => (
-                            <View key={sr.size} style={styles.sizeRow}>
+                        <View key={vKey}>
+                          {/* 품종 헤더 (접기/펼치기) — 접혀있어도 소계는 보임 */}
+                          <TouchableOpacity
+                            style={[styles.saleVarietyRow, vi > 0 && styles.saleVarietyRowSep]}
+                            onPress={() => toggleVariety(vKey)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.saleVarietyLabel}>{vg.variety || '—'}</Text>
+                            {tab === 'other' && varietyExtraCost > 0 && (
+                              <Text style={styles.harvestVarietyCost}>비용 {varietyExtraCost.toLocaleString()}원</Text>
+                            )}
+                            <Text style={styles.harvestVarietyQty}>
+                              {Number.isInteger(varietyTotal) ? varietyTotal : parseFloat(varietyTotal.toFixed(2))}{varietyUnit}
+                            </Text>
+                            <Text style={styles.saleVarietyArrow}>{isOpen ? '▲' : '▼'}</Text>
+                          </TouchableOpacity>
+                          {isOpen && vg.sizes.map((sr) => (
+                            <View key={sr.size} style={styles.harvestSizeRow}>
                               <Text style={styles.sizeLabel}>{sr.size || '—'}</Text>
+                              {tab === 'other' && (sr.extraCost ?? 0) > 0 && (
+                                <Text style={styles.harvestSizeCost}>{(sr.extraCost ?? 0).toLocaleString()}원</Text>
+                              )}
                               <Text style={styles.sizeQty}>
                                 {Number.isInteger(sr.quantity) ? sr.quantity : parseFloat(sr.quantity.toFixed(2))}{sr.unit}
                               </Text>
                             </View>
                           ))}
-                          {(vg.sizes.length > 1 || tab === 'other') && (
-                            <View style={styles.varietySubtotalRow}>
-                              <Text style={styles.varietySubtotalLabel}>{vg.variety || ''} 소계</Text>
-                              <Text style={styles.varietySubtotalValue}>
-                                {Number.isInteger(varietyTotal) ? varietyTotal : parseFloat(varietyTotal.toFixed(2))}{varietyUnit}
-                              </Text>
-                            </View>
-                          )}
-                          {tab === 'other' && (() => {
-                            const varietyExtraCost = vg.sizes.reduce((s, sr) => s + (sr.extraCost ?? 0), 0);
-                            if (varietyExtraCost <= 0) return null;
-                            return (
-                              <View style={[styles.varietySubtotalRow, { backgroundColor: Colors.warningLight, marginTop: 2 }]}>
-                                <Text style={[styles.varietySubtotalLabel, { color: Colors.warning }]}>부수비용</Text>
-                                <Text style={[styles.varietySubtotalValue, { color: Colors.warning }]}>
-                                  {varietyExtraCost.toLocaleString()}원
-                                </Text>
-                              </View>
-                            );
-                          })()}
                         </View>
                       );
                     })}
@@ -690,6 +689,14 @@ const styles = StyleSheet.create({
   saleVarietyQty: { fontSize: 13, color: Colors.textSub, marginRight: 6 },
   saleVarietyRev: { fontSize: 14, fontWeight: '700', color: Colors.primaryDark, minWidth: 70, textAlign: 'right' },
   saleVarietyArrow: { fontSize: 10, color: Colors.textLight, marginLeft: 8 },
+  harvestVarietyQty: { fontSize: 15, fontWeight: '800', color: Colors.primaryDark, textAlign: 'right' },
+  harvestVarietyCost: { fontSize: 12, color: Colors.warning, fontWeight: '700', marginRight: 8 },
+  harvestSizeRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 8, paddingHorizontal: Spacing.md,
+    borderBottomWidth: 1, borderBottomColor: Colors.background,
+  },
+  harvestSizeCost: { fontSize: 12, color: Colors.warning, fontWeight: '600', marginRight: 8 },
   sizeQty: { fontSize: 17, fontWeight: '800', color: Colors.primaryDark, minWidth: 60, textAlign: 'right' },
   varietySubtotalRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
