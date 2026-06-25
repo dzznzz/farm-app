@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform,
 } from 'react-native';
 import { PhIcon } from '../../components/ui/PhIcon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
@@ -13,12 +13,14 @@ import { Colors, Spacing, Typography } from '../../constants/theme';
 import { ChatbotPage } from '../../components/pages/ChatbotPage';
 import { HarvestPage } from '../../components/pages/HarvestPage';
 import { FarmSettingsPage } from '../../components/pages/FarmSettingsPage';
+import { FarmManagePage } from '../../components/pages/FarmManagePage';
 import { ProfileEditPage } from '../../components/pages/ProfileEditPage';
 import { ContactsPage } from '../../components/pages/ContactsPage';
 import { ClientsPage } from '../../components/pages/ClientsPage';
 import { AdminDataPage } from '../../components/pages/AdminDataPage';
+import { myOwnedFarmCount } from '../../lib/farmAccess';
 
-type PageType = 'menu' | 'chatbot' | 'harvest' | 'farmSettings' | 'profileEdit' | 'contacts' | 'clients' | 'adminData';
+type PageType = 'menu' | 'chatbot' | 'harvest' | 'farmSettings' | 'farmManage' | 'profileEdit' | 'contacts' | 'clients' | 'adminData';
 
 const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 
@@ -27,11 +29,15 @@ export default function MoreScreen() {
   const { page: paramPage } = useLocalSearchParams<{ page?: string }>();
   const [page, setPage] = useState<PageType>('menu');
   const [userRole, setUserRole] = useState<string>('user');
+  const [isFarmOwner, setIsFarmOwner] = useState(false);
 
   useEffect(() => {
     if (paramPage === 'chatbot') setPage('chatbot');
     if (paramPage === 'contacts') setPage('contacts');
   }, [paramPage]);
+
+  // 탭을 떠나면 하위 화면을 메뉴로 초기화 — 재진입 시 항상 최초 화면(메뉴)으로 표시
+  useFocusEffect(useCallback(() => () => setPage('menu'), []));
 
   useEffect(() => {
     if (!user) return;
@@ -39,12 +45,19 @@ export default function MoreScreen() {
       .then(({ data }) => { if (data?.role) setUserRole(data.role); });
   }, [user]);
 
+  // 농장주인 농장이 하나라도 있으면 "농장 관리" 메뉴 노출
+  useFocusEffect(useCallback(() => {
+    if (!user) return;
+    myOwnedFarmCount(user.id).then((n) => setIsFarmOwner(n > 0)).catch(() => {});
+  }, [user]));
+
   // 관리자 데이터 관리는 PC 전용 — 모바일에서는 메뉴 자체를 숨겨 진입 차단
   const isAdmin = userRole === 'admin' && !isMobile;
 
   if (page === 'chatbot') return <ChatbotPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'harvest') return <HarvestPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'farmSettings') return <FarmSettingsPage onBack={() => setPage('menu')} userId={user?.id} />;
+  if (page === 'farmManage') return <FarmManagePage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'profileEdit') return <ProfileEditPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'contacts') return <ContactsPage onBack={() => setPage('menu')} userId={user?.id} />;
   if (page === 'clients') return <ClientsPage onBack={() => setPage('menu')} userId={user?.id} />;
@@ -81,6 +94,7 @@ export default function MoreScreen() {
         <Card style={styles.menuCardSecond}>
           {[
             { icon: 'farm', label: '농장 설정', desc: '농장 및 작물 관리', page: 'farmSettings' as PageType },
+            ...(isFarmOwner ? [{ icon: 'users-three', label: '농장 관리', desc: '권한 신청 · 구성원 · 농장주 승계', page: 'farmManage' as PageType }] : []),
             { icon: 'handshake', label: '거래처 관리', desc: '판매처 · 수수료 관리', page: 'clients' as PageType },
             { icon: 'user-circle-gear', label: '프로필 수정', desc: '계정 정보 변경', page: 'profileEdit' as PageType },
             { icon: 'device-mobile', label: '연락처 관리', desc: '지인 연락처', page: 'contacts' as PageType },

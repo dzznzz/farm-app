@@ -211,6 +211,19 @@ export default function InputScreen() {
 
   useFocusEffect(useCallback(() => { loadRecords(date); }, [date, loadRecords]));
 
+  // 탭을 떠나면 화면 상태를 최초 진입 상태(오늘·수확 탭, 닫힌 모달)로 초기화
+  useFocusEffect(useCallback(() => () => {
+    setDate(today);
+    setTab('harvest');
+    setShowForm(false);
+    setShowCalendar(false);
+    setSelectedRecord(null);
+    setEditRecord(undefined);
+    setGroupEditRecords(undefined);
+    setDeleteTarget(null);
+    setExpandedVarieties(new Set());
+  }, [today]));
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try { await loadRecords(date); }

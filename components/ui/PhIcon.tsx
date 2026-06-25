@@ -44,6 +44,7 @@ import {
   TrendUp,
   User,
   UserCircleGear,
+  UsersThree,
 } from 'phosphor-react-native';
 
 type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
@@ -98,6 +99,7 @@ const ICONS = {
   'trend-up': TrendUp,
   'user': User,
   'user-circle-gear': UserCircleGear,
+  'users-three': UsersThree,
 } as const;
 
 export type PhIconName = keyof typeof ICONS | 'blueberry';

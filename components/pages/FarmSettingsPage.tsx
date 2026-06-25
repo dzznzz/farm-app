@@ -8,8 +8,13 @@ import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { PhIcon } from '../ui/PhIcon';
+import { useToast } from '../ui/Toast';
 import { Colors, Spacing, Typography, Radius } from '../../constants/theme';
 import { pageStyles, SettingField } from './shared';
+import {
+  searchFarms, requestFarmJoin, myJoinedFarms,
+  FarmSearchResult, JoinedFarm,
+} from '../../lib/farmAccess';
 
 interface Farm {
   id: string;
@@ -35,8 +40,17 @@ const MAX_FARMS = 5;
 const KAKAO_KEY = process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY ?? '';
 
 export function FarmSettingsPage({ onBack, userId }: Props) {
+  const toast = useToast();
   const [farms, setFarms] = useState<Farm[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 농장 검색 / 권한 신청
+  const [joined, setJoined] = useState<JoinedFarm[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<FarmSearchResult[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [requestingId, setRequestingId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editCrop, setEditCrop] = useState('');
@@ -68,7 +82,38 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
     setLoading(false);
   };
 
-  useEffect(() => { loadFarms(); }, [userId]);
+  const loadJoined = async () => {
+    if (!userId) return;
+    try { setJoined(await myJoinedFarms(userId)); } catch { /* noop */ }
+  };
+
+  useEffect(() => { loadFarms(); loadJoined(); }, [userId]);
+
+  const runSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setSearched(true);
+    try {
+      setSearchResults(await searchFarms(searchQuery));
+    } catch (e: any) {
+      toast.error(e.message ?? '검색에 실패했습니다.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const requestJoin = async (farm: FarmSearchResult) => {
+    setRequestingId(farm.id);
+    try {
+      await requestFarmJoin(farm.id);
+      toast.success('권한을 신청했습니다. 농장주 승인을 기다려주세요.');
+      setSearchResults((prev) => prev.map((r) => r.id === farm.id ? { ...r, my_status: 'pending' } : r));
+    } catch (e: any) {
+      toast.error(e.message ?? '신청에 실패했습니다.');
+    } finally {
+      setRequestingId(null);
+    }
+  };
 
   const startEdit = (farm: Farm) => {
     setEditId(farm.id);
@@ -307,6 +352,81 @@ export function FarmSettingsPage({ onBack, userId }: Props) {
             )}
           </>
         )}
+
+        {/* 참여 중인 농장 (구성원) */}
+        {joined.length > 0 && (
+          <View style={{ marginTop: Spacing.lg }}>
+            <Text style={styles.sectionHeader}>참여 중인 농장</Text>
+            {joined.map((f) => (
+              <Card key={f.id} style={{ marginHorizontal: Spacing.lg, marginBottom: Spacing.sm }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={Typography.bodyBold}>{f.name}</Text>
+                  <View style={styles.joinedBadge}><Text style={styles.joinedBadgeText}>구성원</Text></View>
+                </View>
+                <Text style={Typography.caption}>{f.crop_type}</Text>
+                {!!f.address && <Text style={styles.addressText}>{f.address}</Text>}
+              </Card>
+            ))}
+          </View>
+        )}
+
+        {/* 농장 검색 / 권한 신청 */}
+        <View style={{ marginTop: Spacing.lg }}>
+          <Text style={styles.sectionHeader}>농장 검색 · 권한 신청</Text>
+          <Card style={{ marginHorizontal: Spacing.lg }}>
+            <Text style={[Typography.caption, { marginBottom: Spacing.sm }]}>
+              농장 이름 또는 주소로 검색해 권한을 신청하면, 농장주 승인 후 해당 농장 데이터를 조회·입력할 수 있어요.
+            </Text>
+            <View style={styles.addrRow}>
+              <TextInput
+                style={[pageStyles.settingInput, { flex: 1 }]}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="농장 이름 또는 주소"
+                placeholderTextColor={Colors.textLight}
+                onSubmitEditing={runSearch}
+                returnKeyType="search"
+              />
+              <TouchableOpacity style={styles.addrSearchBtn} onPress={runSearch}>
+                <Text style={styles.addrSearchBtnText}>검색</Text>
+              </TouchableOpacity>
+            </View>
+
+            {searching ? (
+              <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.md }} />
+            ) : searched && searchResults.length === 0 ? (
+              <Text style={[Typography.caption, { marginTop: Spacing.md, textAlign: 'center' }]}>검색 결과가 없습니다</Text>
+            ) : (
+              searchResults.map((f) => (
+                <View key={f.id} style={styles.resultRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={Typography.bodyBold}>{f.name}</Text>
+                    <Text style={Typography.caption}>
+                      {f.crop_type}{f.owner_name ? ` · 농장주 ${f.owner_name}` : ''} · 구성원 {f.member_count}명
+                    </Text>
+                    {!!f.address && <Text style={styles.addressText}>{f.address}</Text>}
+                  </View>
+                  {f.my_status === 'owner' ? (
+                    <Text style={styles.statusLabel}>내 농장</Text>
+                  ) : f.my_status === 'member' ? (
+                    <Text style={styles.statusLabel}>참여 중</Text>
+                  ) : f.my_status === 'pending' ? (
+                    <Text style={styles.statusPending}>신청됨</Text>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.requestBtn}
+                      disabled={requestingId === f.id}
+                      onPress={() => requestJoin(f)}
+                    >
+                      <Text style={styles.requestBtnText}>{requestingId === f.id ? '신청 중…' : '권한 신청'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))
+            )}
+          </Card>
+        </View>
+
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
 
@@ -421,4 +541,25 @@ const styles = StyleSheet.create({
   addrPlaceName: { ...Typography.bodyBold, marginBottom: 2 },
   addrRoadName: { ...Typography.body, color: Colors.text },
   addrJibun: { ...Typography.caption, color: Colors.textSub, marginTop: 2 },
+  sectionHeader: {
+    ...Typography.label, color: Colors.textSub,
+    paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm,
+  },
+  joinedBadge: {
+    backgroundColor: Colors.background, borderRadius: Radius.full,
+    paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: Colors.border,
+  },
+  joinedBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.textSub },
+  resultRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingTop: Spacing.md, marginTop: Spacing.sm,
+    borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  requestBtn: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full,
+    backgroundColor: Colors.primary,
+  },
+  requestBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  statusLabel: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
+  statusPending: { fontSize: 12, color: Colors.primary, fontWeight: '700' },
 });

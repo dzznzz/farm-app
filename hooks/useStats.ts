@@ -206,9 +206,8 @@ export async function fetchPriceHistory(
     supabase.from('sales_records')
       .select('date, price_per_unit, crop_type, variety, size')
       .eq('user_id', userId).gte('date', from).lte('date', to)
-      // 최신 데이터가 limit에 잘리지 않도록 내림차순으로 가져온 뒤 뒤집는다
-      .order('date', { ascending: false })
-      .limit(100),
+      .order('date')
+      .limit(2000),
     farmId,
   );
   const { data } = await q;
@@ -221,8 +220,36 @@ export async function fetchPriceHistory(
       crop: r.crop_type ?? '',
       variety: r.variety ?? '',
       size: r.size ?? '',
-    }))
-    .reverse();
+    }));
+}
+
+// 막대 차트 상세: 기간 막대 선택 시 작물·품종·사이즈별 내역을 보여주기 위한 원시 데이터
+export interface TrendDetailRow {
+  date: string;
+  crop: string;
+  variety: string;
+  size: string;
+  value: number; // harvest: 수량(kg) / sales: 매출(원)
+}
+
+export async function fetchTrendDetail(
+  userId: string, from: string, to: string, farmId?: string,
+): Promise<{ harvest: TrendDetailRow[]; sales: TrendDetailRow[] }> {
+  const [h, s] = await Promise.all([
+    applyFarm(supabase.from('harvest_records').select('date, crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to), farmId),
+    applyFarm(supabase.from('sales_records').select('date, crop_type, variety, size, total_revenue').eq('user_id', userId).gte('date', from).lte('date', to), farmId),
+  ]);
+  const mapRow = (valueKey: string) => (r: any): TrendDetailRow => ({
+    date: r.date,
+    crop: r.crop_type ?? '',
+    variety: r.variety ?? '',
+    size: r.size ?? '',
+    value: r[valueKey] ?? 0,
+  });
+  return {
+    harvest: (h.data ?? []).map(mapRow('quantity')),
+    sales: (s.data ?? []).map(mapRow('total_revenue')),
+  };
 }
 
 export async function fetchSummary(userId: string) {

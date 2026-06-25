@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, TextInput, Alert, ActivityIndicator, StatusBar, Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,8 +37,11 @@ interface Props {
   initialCity?: string;
 }
 
+const HOURLY_MIN_WIDTH = 72;
+
 export function WeatherModal({ visible, onClose, initialWeather, initialCity }: Props) {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const [weather, setWeather] = useState<WeatherData | null>(initialWeather ?? null);
   const [loading, setLoading] = useState(!initialWeather);
   const [cityInput, setCityInput] = useState('');
@@ -157,17 +161,31 @@ export function WeatherModal({ visible, onClose, initialWeather, initialCity }: 
             </View>
           </LinearGradient>
 
-          {tab === 'current' && weather && !loading && (
+          {tab === 'current' && weather && !loading && (() => {
+            // 화면 전체 너비를 시간 개수만큼 균등 분할하되, 최소 72px는 유지.
+            // 최소 폭으로도 넘치면 가로 스크롤로 확인.
+            const count = weather.hourly.length;
+            const available = windowWidth - Spacing.lg * 2;
+            const fillWidth = count > 0 ? (available - (count - 1) * Spacing.sm) / count : HOURLY_MIN_WIDTH;
+            // 최소 폭(72px)으로도 다 못 담을 때만 넘침 → 이때만 스크롤 활성화.
+            // 화면에 다 들어오면(창을 넓혔을 때 등) 스크롤/스크롤바를 없앤다.
+            const overflow = fillWidth < HOURLY_MIN_WIDTH;
+            const cardWidth = Math.floor(Math.max(HOURLY_MIN_WIDTH, fillWidth));
+            return (
             <>
               <Text style={styles.sectionLabel}>시간별 예보</Text>
               <ScrollView
                 horizontal
-                showsHorizontalScrollIndicator={Platform.OS === 'web'}
+                scrollEnabled={overflow}
+                showsHorizontalScrollIndicator={overflow && Platform.OS === 'web'}
                 style={styles.hourlyScroll}
                 contentContainerStyle={styles.hourlyScrollContent}
               >
                 {weather.hourly.map((h, i) => (
-                  <Card key={i} style={styles.hourlyCard}>
+                  <Card
+                    key={i}
+                    style={[styles.hourlyCard, { width: cardWidth, marginRight: i === count - 1 ? 0 : Spacing.sm }]}
+                  >
                     <Text style={styles.hourlyTime}>{formatHour(h.time)}</Text>
                     <PhIcon name={getWeatherIconName(h.icon) as any} size={22} color={Colors.primary} style={{ marginBottom: 6 }} />
                     <Text style={styles.hourlyTemp}>{h.temp}°</Text>
@@ -193,7 +211,8 @@ export function WeatherModal({ visible, onClose, initialWeather, initialCity }: 
                 ))}
               </Card>
             </>
-          )}
+            );
+          })()}
 
           {tab === 'monthly' && (
             <>

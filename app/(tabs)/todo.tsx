@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, KeyboardAvoidingView, Platform, Switch,
+  TextInput, KeyboardAvoidingView, Platform, Switch, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
+import { useTabLeaveGuard } from '../../lib/tabLeaveGuard';
 import { PhIcon } from '../../components/ui/PhIcon';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -123,6 +124,27 @@ export default function TodoScreen() {
   };
 
   useFocusEffect(useCallback(() => { load(date); }, [date, user]));
+
+  // 저장 전 입력값이 있으면(추가 칸에 텍스트가 있거나 수정 중) 탭 이동 시 확인받는다.
+  const hasUnsaved = newText.trim() !== '' || editingId !== null;
+  const leaveGuard = useTabLeaveGuard('todo', () => hasUnsaved);
+
+  // 탭을 떠나면 날짜·입력 칸을 최초 진입 상태(오늘)로 초기화
+  useFocusEffect(useCallback(() => () => {
+    setDate(today);
+    setNewText('');
+    setNewTime('00:00');
+    setNewAlarm(false);
+    setEditingId(null);
+    setEditText('');
+    setEditTime('');
+    setEditAlarm(false);
+    setShowTimePicker(false);
+    setShowEditTimePicker(false);
+    setShowCalendar(false);
+    setShowAlarmTooltip(false);
+    setShowEditAlarmTooltip(false);
+  }, [today]));
 
   const handleDateChange = (delta: number) => {
     const next = addDays(date, delta);
@@ -434,6 +456,26 @@ export default function TodoScreen() {
         onSelect={(d) => { setDate(d); load(d); setShowCalendar(false); }}
         onClose={() => setShowCalendar(false)}
       />
+
+      {/* 저장 전 입력값이 있는 상태에서 탭 이동 시 확인 */}
+      <Modal visible={leaveGuard.dialogVisible} transparent animationType="fade" onRequestClose={leaveGuard.cancel}>
+        <View style={styles.leaveOverlay}>
+          <View style={styles.leaveDialog}>
+            <Text style={styles.leaveTitle}>이동하시겠어요?</Text>
+            <Text style={styles.leaveMsg}>
+              입력한 내용이 아직 저장되지 않았어요.{'\n'}이동하면 입력한 정보가 사라집니다.
+            </Text>
+            <View style={styles.leaveBtns}>
+              <TouchableOpacity style={styles.leaveCancelBtn} onPress={leaveGuard.cancel}>
+                <Text style={styles.leaveCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.leaveConfirmBtn} onPress={leaveGuard.confirm}>
+                <Text style={styles.leaveConfirmText}>이동</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -577,4 +619,25 @@ const styles = StyleSheet.create({
     zIndex: 200,
   },
   tooltipText: { fontSize: 12, color: '#fff', lineHeight: 18 },
+  leaveOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  leaveDialog: {
+    backgroundColor: Colors.surface, borderRadius: Radius.xl,
+    padding: Spacing.xl, width: 300,
+  },
+  leaveTitle: { fontSize: 17, fontWeight: '700', color: Colors.text, marginBottom: Spacing.sm },
+  leaveMsg: { fontSize: 14, color: Colors.textSub, lineHeight: 22, marginBottom: Spacing.lg },
+  leaveBtns: { flexDirection: 'row', gap: 10 },
+  leaveCancelBtn: {
+    flex: 1, backgroundColor: Colors.primaryUltraLight,
+    borderRadius: Radius.md, paddingVertical: 12, alignItems: 'center',
+  },
+  leaveCancelText: { fontSize: 15, fontWeight: '600', color: Colors.primaryDark },
+  leaveConfirmBtn: {
+    flex: 1, backgroundColor: Colors.primary,
+    borderRadius: Radius.md, paddingVertical: 12, alignItems: 'center',
+  },
+  leaveConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

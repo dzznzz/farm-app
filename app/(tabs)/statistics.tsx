@@ -11,7 +11,8 @@ import Svg, { Circle, G, Path, Line as SvgLine, Text as SvgText } from 'react-na
 import { useAuth } from '../../hooks/useAuth';
 import {
   fetchPeriodSummaryForRange, fetchStatsForRange,
-  fetchPriceHistory, fetchBreakdown, PeriodSummary, PricePoint,
+  fetchPriceHistory, fetchBreakdown, fetchTrendDetail,
+  PeriodSummary, PricePoint, TrendDetailRow,
 } from '../../hooks/useStats';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/ui/Card';
@@ -124,6 +125,66 @@ function getBarFrom(to: string, period: PeriodType): string {
   else if (period === 'month') d.setMonth(d.getMonth() - 6);
   else d.setFullYear(d.getFullYear() - 6);
   return d.toISOString().split('T')[0];
+}
+
+// 날짜를 기간 단위 버킷 키로 변환 (groupStats와 동일 규칙)
+function periodKeyOf(date: string, period: PeriodType): string {
+  if (period === 'week') {
+    const d = new Date(date);
+    const dow = d.getDay();
+    d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    return d.toISOString().split('T')[0];
+  }
+  if (period === 'month') return date.slice(0, 7);
+  if (period === 'year') return date.slice(0, 4);
+  return date;
+}
+
+// 판매 단가 차트: 선택 기간 기준 -3 ~ +3 구간의 버킷(키·라벨) 목록
+interface PriceBucket { key: string; label: string }
+function getPriceBuckets(date: string, period: PeriodType): PriceBucket[] {
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const buckets: PriceBucket[] = [];
+  for (let off = -3; off <= 3; off++) {
+    if (period === 'day') {
+      const d = new Date(date); d.setDate(d.getDate() + off);
+      const key = d.toISOString().split('T')[0];
+      buckets.push({ key, label: `${d.getMonth() + 1}/${d.getDate()}` });
+    } else if (period === 'week') {
+      const d = new Date(date);
+      const dow = d.getDay();
+      d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1) + off * 7); // 해당 주 월요일
+      const key = d.toISOString().split('T')[0];
+      buckets.push({ key, label: `${d.getMonth() + 1}/${d.getDate()}` });
+    } else if (period === 'month') {
+      const [y, m] = date.split('-').map(Number);
+      const d = new Date(y, (m - 1) + off, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      buckets.push({ key, label: `${d.getMonth() + 1}월` });
+    } else {
+      const y = parseInt(date.slice(0, 4)) + off;
+      buckets.push({ key: String(y), label: String(y) });
+    }
+  }
+  return buckets;
+}
+
+// 판매 단가 원시 데이터를 가져올 [from, to] 범위 (선택 기간 -3 ~ +3 구간 전체)
+function getPriceRange(date: string, period: PeriodType): { from: string; to: string } {
+  const buckets = getPriceBuckets(date, period);
+  const first = buckets[0].key;
+  const last = buckets[buckets.length - 1].key;
+  if (period === 'day') return { from: first, to: last };
+  if (period === 'week') {
+    const end = new Date(last); end.setDate(end.getDate() + 6); // 마지막 주 일요일
+    return { from: first, to: end.toISOString().split('T')[0] };
+  }
+  if (period === 'month') {
+    const [ly, lm] = last.split('-').map(Number);
+    const end = new Date(ly, lm, 0); // 마지막 달 말일
+    return { from: `${first}-01`, to: end.toISOString().split('T')[0] };
+  }
+  return { from: `${first}-01-01`, to: `${last}-12-31` };
 }
 
 function fillFullRange(grouped: DailyStat[], period: PeriodType, from: string, to: string): DailyStat[] {
@@ -239,6 +300,9 @@ export default function StatisticsScreen() {
 
   const [donutData, setDonutData] = useState<Awaited<ReturnType<typeof fetchBreakdown>> | null>(null);
 
+  // 막대 차트 상세(작물·품종·사이즈별) — 막대 선택 시 사용
+  const [trendDetail, setTrendDetail] = useState<{ harvest: TrendDetailRow[]; sales: TrendDetailRow[] }>({ harvest: [], sales: [] });
+
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [priceCrop, setPriceCrop] = useState<string | null>(null);
   const [priceVariety, setPriceVariety] = useState<string | null>(null);
@@ -261,14 +325,15 @@ export default function StatisticsScreen() {
     setBarLoading(true);
 
     const barF = getBarFrom(curT, p);
-    const d7 = new Date(); d7.setDate(d7.getDate() - 7);
-    const priceFrom = d7.toISOString().split('T')[0];
+    // 판매 단가: 선택 기간 -3 ~ +3 구간 전체를 가져와 버킷별 평균을 계산
+    const priceRange = getPriceRange(date, p);
 
-    const [summaryResult, statsData, breakdownResult, prices] = await Promise.all([
+    const [summaryResult, statsData, breakdownResult, prices, detail] = await Promise.all([
       fetchPeriodSummaryForRange(user.id, curF, curT, prevF, prevT, selectedFarmId),
       fetchStatsForRange(user.id, barF, curT, selectedFarmId),
       fetchBreakdown(user.id, curF, curT, selectedFarmId),
-      fetchPriceHistory(user.id, priceFrom, today, selectedFarmId),
+      fetchPriceHistory(user.id, priceRange.from, priceRange.to, selectedFarmId),
+      fetchTrendDetail(user.id, barF, curT, selectedFarmId),
     ]);
 
     let previousYear: PeriodSummary | undefined;
@@ -284,6 +349,7 @@ export default function StatisticsScreen() {
     setBarStats(statsData);
     setDonutData(breakdownResult);
     setPriceHistory(prices);
+    setTrendDetail(detail);
     setSummaryLoading(false);
     setBarLoading(false);
   }, [user, selectedFarmId]);
@@ -299,6 +365,24 @@ export default function StatisticsScreen() {
   }, [paramPeriod]);
 
   useFocusEffect(useCallback(() => { loadAll(period, selectedDate); }, [period, selectedDate, loadAll]));
+
+  // 탭을 떠나면 조회 조건·선택 상태를 최초 진입 상태로 초기화
+  useFocusEffect(useCallback(() => () => {
+    setPeriod('day');
+    setSelectedDate(today);
+    setChartType('harvest');
+    setDonutTab('crop');
+    setSelectedDonut(null);
+    setSelectedBar(null);
+    setSelectedFarmId(undefined);
+    setPriceCrop(null);
+    setPriceVariety(null);
+    setPriceSize(null);
+    setPriceSelectField(null);
+    setShowDatePicker(false);
+    setShowBreakdown(false);
+    setShowExport(false);
+  }, [today]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -323,6 +407,7 @@ export default function StatisticsScreen() {
       value: val,
       valueText,
       label: formatDate(s.date, period),
+      dateKey: s.date,
       frontColor: hasVal ? Colors.primary : Colors.border,
     };
   });
@@ -340,11 +425,19 @@ export default function StatisticsScreen() {
   const activePriceCrop = priceCrop && priceCropOptions.includes(priceCrop) ? priceCrop : ALL;
   const activePriceVariety = priceVariety && priceVarietyOptions.includes(priceVariety) ? priceVariety : ALL;
   const activePriceSize = priceSize && priceSizeOptions.includes(priceSize) ? priceSize : ALL;
-  const priceChartData = sizeFiltered.map((p) => ({
-    value: p.price,
-    label: p.date.slice(5),
-    dataPointText: p.price.toLocaleString(),
-  }));
+  // 선택 기간 -3 ~ +3 구간으로 버킷팅 → 버킷별 평균 단가(판매 없는 구간은 0원)
+  const priceBuckets = getPriceBuckets(selectedDate, period);
+  const priceBucketAgg: Record<string, { sum: number; count: number }> = {};
+  priceBuckets.forEach((b) => { priceBucketAgg[b.key] = { sum: 0, count: 0 }; });
+  sizeFiltered.forEach((p) => {
+    const k = periodKeyOf(p.date, period);
+    if (priceBucketAgg[k]) { priceBucketAgg[k].sum += p.price; priceBucketAgg[k].count += 1; }
+  });
+  const priceChartData = priceBuckets.map((b) => {
+    const agg = priceBucketAgg[b.key];
+    const avg = agg.count > 0 ? Math.round(agg.sum / agg.count) : 0;
+    return { value: avg, label: b.label, dataPointText: avg.toLocaleString() };
+  });
   const priceMax = Math.max(...priceChartData.map((d) => d.value), 1);
   // 차트가 카드 너비를 꽉 채우도록 포인트 간격 계산 (y축 44 + 좌우 여백 제외)
   const priceSpacing = priceChartWidth > 0 && priceChartData.length > 1
@@ -384,12 +477,33 @@ export default function StatisticsScreen() {
   const barTotal = chartData.reduce((s, d) => s + d.value, 0);
   const selectedBarPct = selectedBarItem && barTotal > 0
     ? ((selectedBarItem.value / barTotal) * 100).toFixed(1) : null;
-  const selectedBarDetail = selectedBarItem
-    ? (chartType === 'harvest'
-        ? `${selectedBarItem.value.toLocaleString()}kg`
-        : `${selectedBarItem.value.toFixed(1)}만원`)
-    : null;
   const toggleBar = (i: number) => { hapticLight(); setSelectedBar((prev) => (prev === i ? null : i)); };
+
+  // 선택한 막대(기간)의 작물-품종 → 사이즈별 상세 내역
+  const fmtBarVal = (v: number) => chartType === 'harvest'
+    ? `${Number.isInteger(v) ? v.toLocaleString() : parseFloat(v.toFixed(1)).toLocaleString()}kg`
+    : `${Math.round(v).toLocaleString()}원`;
+  type BarSizeRow = { size: string; value: number };
+  type BarCVGroup = { crop: string; variety: string; total: number; sizes: BarSizeRow[] };
+  const selectedBarRows: TrendDetailRow[] = selectedBarItem
+    ? (chartType === 'harvest' ? trendDetail.harvest : trendDetail.sales)
+        .filter((r) => periodKeyOf(r.date, period) === selectedBarItem.dateKey)
+    : [];
+  const barDetailTotal = selectedBarRows.reduce((s, r) => s + r.value, 0);
+  const barDetailGroups: BarCVGroup[] = (() => {
+    const groups: BarCVGroup[] = [];
+    for (const r of selectedBarRows) {
+      let g = groups.find((x) => x.crop === r.crop && x.variety === r.variety);
+      if (!g) { g = { crop: r.crop, variety: r.variety, total: 0, sizes: [] }; groups.push(g); }
+      g.total += r.value;
+      let sz = g.sizes.find((s) => s.size === r.size);
+      if (!sz) { sz = { size: r.size, value: 0 }; g.sizes.push(sz); }
+      sz.value += r.value;
+    }
+    groups.forEach((g) => g.sizes.sort((a, b) => b.value - a.value));
+    groups.sort((a, b) => b.total - a.total);
+    return groups;
+  })();
 
   // 도넛 회전 애니메이션
   useEffect(() => {
@@ -722,12 +836,30 @@ export default function StatisticsScreen() {
             </View>
           )}
           {selectedBarItem && (
-            <View style={styles.barTooltip}>
-              <View style={styles.barTooltipDot} />
-              <Text style={styles.barTooltipText}>
-                <Text style={styles.barTooltipLabel}>{selectedBarItem.label}</Text>
-                {`  ·  ${selectedBarDetail}  ·  전체의 ${selectedBarPct}%`}
-              </Text>
+            <View style={styles.barDetail}>
+              <View style={styles.barDetailHeaderRow}>
+                <View style={styles.barTooltipDot} />
+                <Text style={styles.barDetailHeaderText}>
+                  <Text style={styles.barTooltipLabel}>{selectedBarItem.label}</Text>
+                  {`  전체 ${fmtBarVal(barDetailTotal)}`}
+                  {selectedBarPct ? `  ·  전체의 ${selectedBarPct}%` : ''}
+                </Text>
+              </View>
+              {barDetailGroups.length === 0 ? (
+                <Text style={styles.barDetailEmpty}>상세 내역이 없습니다</Text>
+              ) : (
+                barDetailGroups.map((g, gi) => (
+                  <View key={gi} style={styles.barDetailGroup}>
+                    <Text style={styles.barDetailCV}>
+                      [{[g.crop, g.variety].filter(Boolean).join('-') || '미입력'}]
+                      <Text style={styles.barDetailCVTotal}>{`  ${fmtBarVal(g.total)}`}</Text>
+                    </Text>
+                    <Text style={styles.barDetailSizes}>
+                      {g.sizes.map((s) => `${s.size || '—'} ${fmtBarVal(s.value)}`).join(', ')}
+                    </Text>
+                  </View>
+                ))
+              )}
             </View>
           )}
         </Card>
@@ -805,7 +937,10 @@ export default function StatisticsScreen() {
         {/* 최근 판매 단가 */}
         {priceHistory.length > 0 && (
           <Card style={styles.priceCard}>
-            <Text style={[Typography.h3, { marginBottom: Spacing.sm }]}>최근 판매 단가</Text>
+            <Text style={Typography.h3}>판매 단가 추이</Text>
+            <Text style={styles.priceSubLabel}>
+              {`선택 ${PERIODS.find((p) => p.key === period)?.label} ±3 구간${period === 'day' ? '' : ' 평균'} · 판매 없는 구간은 0원`}
+            </Text>
             <View style={styles.priceSelectRow}>
               <TouchableOpacity style={styles.priceSelect} activeOpacity={0.7}
                 onPress={() => { hapticLight(); setPriceSelectField('crop'); }}>
@@ -1035,6 +1170,7 @@ const styles = StyleSheet.create({
   stockResultLabel: { ...Typography.bodyBold },
   stockResultValue: { fontSize: 22, fontWeight: '800' },
   priceCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
+  priceSubLabel: { ...Typography.caption, marginTop: 2, marginBottom: Spacing.sm },
   priceSelectRow: { flexDirection: 'row', gap: 6, paddingBottom: Spacing.md },
   priceSelect: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -1058,13 +1194,21 @@ const styles = StyleSheet.create({
   hBarFill: { height: '100%', borderTopRightRadius: 9, borderBottomRightRadius: 9 },
   hBarValue: { width: 56, fontSize: 11, fontWeight: '700', color: Colors.text },
   hBarValueActive: { color: Colors.primaryDark, fontWeight: '800' },
-  barTooltip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: Spacing.sm, paddingHorizontal: 12, paddingVertical: 8,
+  barDetail: {
+    marginTop: Spacing.sm, paddingHorizontal: 12, paddingVertical: 10,
     backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.md,
   },
+  barDetailHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  barDetailHeaderText: { flex: 1, fontSize: 12, color: Colors.textSub },
+  barDetailEmpty: { fontSize: 12, color: Colors.textSub, marginTop: 8 },
+  barDetailGroup: {
+    marginTop: 8, paddingTop: 8,
+    borderTopWidth: 1, borderTopColor: Colors.primaryLight,
+  },
+  barDetailCV: { fontSize: 12.5, fontWeight: '800', color: Colors.text },
+  barDetailCVTotal: { fontSize: 12, fontWeight: '700', color: Colors.primaryDark },
+  barDetailSizes: { fontSize: 12, color: Colors.textSub, marginTop: 3, lineHeight: 18 },
   barTooltipDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primaryDark },
-  barTooltipText: { flex: 1, fontSize: 12, color: Colors.textSub },
   barTooltipLabel: { fontSize: 13, fontWeight: '800', color: Colors.primaryDark },
   breakdownBtn: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

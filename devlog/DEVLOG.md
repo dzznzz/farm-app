@@ -15,6 +15,34 @@
 
 ---
 
+## 2026-06-25 — 21차 작업 (TO-BE 16~20)
+
+### 16. 탭 이동 — 재진입 시 초기화 + 저장 전 입력 경고
+- 각 탭이 blur(`useFocusEffect` 클린업)에 화면 상태를 최초 진입 상태로 초기화 → 재진입 시 항상 초기 화면.
+  - 더보기: 하위 페이지 → `menu` / 통계: 기간·날짜·차트·도넛·농장필터·판매단가 select·모달 / 입력: 오늘·수확탭·모달·folding / 할 일: 오늘·입력칸·수정상태.
+- `lib/tabLeaveGuard.ts`(모듈 레지스트리 + `useTabLeaveGuard` 훅) 신설. 탭 레이아웃 `screenListeners.tabPress`에서 현재 탭의 가드를 조회 → 미저장 입력이 있으면 `e.preventDefault()` 후 확인 다이얼로그, "이동" 시에만 `navigation.navigate`. '할 일' 탭(추가칸 텍스트/수정 중)이 가드 등록.
+
+### 17. 날씨 상세 — 시간별 예보 균등 분할 (`WeatherModal.tsx`)
+- `useWindowDimensions`로 카드 폭 = `max(72, (가용폭 − 간격합) / 개수)`로 균등 분할(전체 너비 채움).
+- 넘칠 때만 `scrollEnabled` ON → 화면에 다 들어오면(웹 창 확대 등) 스크롤바 사라짐. 스크롤바는 넘치는 웹에서만, 앱/모바일은 항상 숨김. `Math.floor`로 1px 넘침 방지. `Card` style 타입을 `StyleProp<ViewStyle>`로 확장.
+
+### 18. 통계 > 최근 판매 단가 — 기간별 ±3 구간 평균 (`statistics.tsx`, `hooks/useStats.ts`)
+- 고정 "최근 7일" → 선택 기간(일/주/월/연) 기준 **-3 ~ +3 구간(7개 버킷)**. `getPriceBuckets`/`getPriceRange`/`periodKeyOf`로 버킷 키·라벨·범위 계산.
+- `fetchPriceHistory`(범위 원시 데이터, 오름차순 limit2000) → 선택 작물/품종/사이즈 필터 후 버킷별 **평균 단가** 집계. 판매 없는 버킷은 0원으로 채워 항상 7포인트. 카드 제목/캡션 갱신.
+
+### 19. 통계 > 수확량 추이 — 막대 선택 상세 (`statistics.tsx`, `hooks/useStats.ts`)
+- 단일 줄 툴팁 → **작물-품종 그룹 → 사이즈별 상세** 패널. `fetchTrendDetail`로 막대 범위 원시 내역 보관, 선택 막대의 버킷 키에 해당하는 행만 그룹핑. 수확/매출 탭에 따라 kg/원 단위 자동 전환.
+
+### 20. 농장 공유 — 농장주/구성원 + 권한 신청 (관리 기능 + DB 기반)
+- **마이그레이션 015**(`supabase_migration_015_farm_sharing.sql`): `farm_members`(owner/member)·`farm_join_requests` 테이블, farms INSERT 트리거로 최초 등록자 자동 농장주(+기존 백필).
+  - `is_farm_member`/`is_farm_owner`(SECURITY DEFINER) + RPC(`search_farms`·`request_farm_join`·`approve/reject_join_request`·`remove_farm_member`·`transfer_farm_ownership`·`owner_pending_requests`·`farm_members_detail`).
+  - 권한 모델: 구성원 = 조회 전체(데이터 테이블 `*_farm_member_read` SELECT 정책 **추가**)·입력 전체(기존 user_id INSERT 정책)·수정/삭제 본인 것만(기존 정책 유지). 기존 정책 미변경 → 단일 사용자 동작 보존.
+- 앱: `lib/farmAccess.ts` / `FarmSettingsPage` 농장 검색·권한 신청 + 참여 농장 목록 / `FarmManagePage` 신설(승인·반려·구성원 삭제·농장주 승계) / 더보기 메뉴 농장주 전용 "농장 관리" 노출 / `PhIcon` `users-three` 추가.
+- ⚠️ **적용**: Supabase에 `supabase_migration_015_farm_sharing.sql` 실행 필요.
+- 🔜 **후속**: 입력/통계/홈/할일/useStats 조회를 user_id → 농장 멤버십 기준으로 재배선해야 구성원이 공유 데이터를 화면에서 실제 조회·입력 가능(DB/RLS 토대는 준비됨, `farm_id=NULL` 기존 기록 처리 정책 포함). 공유 농장 UX는 사용자 구상 후 진행 예정.
+
+---
+
 ## 2026-06-24 — 20차 작업 (TO-BE 12~15)
 
 ### TO-BE 로드맵 12~15 적용 — 판매 단가 select 분리 · 수확 folding · 도넛 에러 · 날씨 스크롤
@@ -674,3 +702,40 @@ create table harvest_notes (
 | `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | Google OAuth iOS 클라이언트 ID | console.cloud.google.com |
 | `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` | Google OAuth Android 클라이언트 ID | console.cloud.google.com |
 | `EXPO_PUBLIC_KAKAO_REST_API_KEY` | 카카오 주소 검색 REST API 키 (선택) | developers.kakao.com |
+
+---
+
+# 부록 — 통합 보관 (구 분산 문서 합본)
+
+> 2026-06-25: 더 이상 갱신되지 않던 분산 문서(`devlog/history/history.md`, `devlog/history/work-log.md`, `devlog/issue.md`, `devlog/SETUP_GUIDE.md`, `devlog/todo/20260602/bugs.md`)를 이 DEVLOG로 합치고 원본 파일은 제거했다. (상세 내역은 git 히스토리에 보존됨.) 이후 개발 로그는 이 파일 하나로 관리한다.
+
+## 이슈 이력 (issue.md 합본 — 전부 ✅ 해결)
+
+| # | 요약 |
+|---|------|
+| ISSUE-001 | iOS EAS 빌드 실패(SPM 의존성) → 빌드 이미지 `xcode-26.2`(Swift 6.2) 전환 |
+| ISSUE-002 | 빌드 후 실행 즉시 강제 종료 → `eas secret:push`로 환경변수 등록 |
+| ISSUE-003 | 통계 탭 크래시(1차) → BarChart `gradientColor` prop 제거 |
+| ISSUE-004 | 통계 탭 크래시(2차) → ExportModal lazy mount, 빈 clientId 안전 처리 |
+| ISSUE-005 | 기기 연락처 가져오기 미동작 → iOS `limited` 권한 처리 추가 |
+| ISSUE-006 | 날씨 닫기 버튼이 상태바에 가림 → `useSafeAreaInsets` 전환 |
+| ISSUE-007 | 수확·판매·기타 기록 수정/삭제 미구현 → 그룹 수정 폼 + 삭제 구현 |
+| ISSUE-008 | Google Sheets 내보내기 크래시(native 모듈 누락) → lazy mount/안전 처리 |
+| ISSUE-009 | 연락처 가져오기 deprecated API 오류 → expo-contacts v56 API 대응 |
+| ISSUE-010 | TODO 알람 툴팁이 하단 바를 밀어냄 → absolute floating 툴팁 |
+| ISSUE-011 | 입력 수정 모드에서 원래 농장 미복원 → `DisplayRecord.farmId` 복원 |
+| ISSUE-012 | 데이터 관리 탭 PC/웹 원형 렌더링 → 가로 ScrollView `borderRadius` 제거 |
+| ISSUE-013 | 농장 뱃지 첫 로드 미표시 → 렌더 시점 `farms` state 실시간 조회 |
+| ISSUE-014 | 단가 히스토리 항상 비어 있음 → 조회 범위 수정 |
+| ISSUE-015 | 판매 유형 달라도 같은 사이즈면 합쳐짐 → saleType 포함 그룹 키 |
+
+## 초기 버그 리포트 (bugs.md 합본 — 2026-06-02 실기기 테스트)
+
+- **BUG-001 — Google Sheets 내보내기 Bad Request**: OAuth authorization grant 불일치(redirect URI/clientId). → 내보내기 모듈 lazy mount + 빈 clientId 안전 처리(ISSUE-004/008과 동일 맥락).
+- **BUG-002 — 연락처 "이름이 없는 연락처입니다"**: expo-contacts v56에서 `Contact.Fields` → `Fields` named export 변경 및 이름 필드 파싱 보정.
+
+## 환경 설정 요약 (SETUP_GUIDE.md 합본)
+
+1. **Supabase**: New project(지역 Seoul) → SQL Editor에서 `supabase/supabase_schema.sql` 실행 후 `supabase/migrations/*.sql`을 번호 순서대로 실행.
+2. **API 키**: Dashboard → Settings → API 의 Project URL / anon public 키를 `.env`(`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`)에 설정.
+3. 나머지 환경변수와 빌드/배포 절차는 위 「환경변수 전체 목록」 및 `README.md` 참고.
