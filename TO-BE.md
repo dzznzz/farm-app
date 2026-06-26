@@ -192,3 +192,14 @@ node_modules/scheduler/cjs/scheduler.development.js
   - 앱: `lib/farmAccess.ts` 헬퍼 / `FarmSettingsPage`에 **농장 검색·권한 신청** + 참여 중인 농장 목록 추가 / **`FarmManagePage`(농장 관리)** 신설(권한 신청 승인·반려, 구성원 삭제, 농장주 승계) / 더보기 메뉴에 농장주일 때만 "농장 관리" 노출(`myOwnedFarmCount`).
   - ⚠️ 적용하려면 Supabase에 `supabase_migration_015_farm_sharing.sql` 실행 필요.
   - 🔜 후속(별도 작업): 입력/통계/홈/할일/useStats의 데이터 조회를 user_id 기준 → 농장 멤버십 기준으로 재배선해야 구성원이 공유 농장 데이터를 화면에서 실제로 보고 입력할 수 있음. (DB/RLS 기반은 이미 준비됨)
+
+### 21. 농장 멤버십 구조 변경 ✅
+- 입력/통계/홈/useStats의 데이터 조회를 농장 멤버십 기준으로 재배선
+- 할일 : 입력할 때, 구분을 하나 추가해서 개인 (계정만 보이는 할일), 구성원 (농장 구성원 전체에게 보이는 할일)로 구분해서 입력하고 구분에 따라 조회되게 해줘.
+- 06/26 적용.
+  - **데이터 조회 재배선**: `lib/farmAccess.ts`에 `accessibleFarmIds(소유+참여 농장 ID)`·`myFarms(소유+참여 농장 목록, 대표 우선)` 추가. `hooks/useStats.ts`의 모든 조회 함수(`fetchPeriodSummary(ForRange)`·`fetchStatsForRange`·`fetchBreakdown`·`fetchPriceHistory`·`fetchTrendDetail`·`fetchSummary`·`useStats`)를 `applyScope`로 통일 — **특정 농장 선택 시 그 농장 전체(구성원 데이터 포함)**, 미선택 시 **접근 가능 농장 전체 + 본인 농장 미지정(farm_id null) 기록**, 둘 다 없으면 기존처럼 본인만. (RLS 015가 구성원 조회 허용)
+  - **통계/홈**: 농장 필터·요약 집계를 `myFarms`/`accessibleFarmIds` 기준으로 전환(소유만 → 소유+참여). `BreakdownModal`도 `farmIds` 전달.
+  - **입력**: 농장 선택지를 `myFarms`로, 일별 내역을 접근 가능 농장 범위로 조회(구성원 기록 함께 표시). `DisplayRecord.ownerId` 추가 → **본인 것만 수정·삭제** 버튼 노출, 타 구성원 기록은 "구성원" 배지로 읽기 전용 표시.
+  - **할 일 개인/구성원**: **마이그레이션 016**(`supabase_migration_016_todo_scope.sql`) — `todos`에 `scope('personal'|'shared')`·`farm_id` 추가, `scope='shared'`면 `farm_id` 필수(CHECK), RLS를 세분화(조회/수정/삭제는 본인 것 + 내가 속한 농장의 공유 할 일=협업형, 입력은 본인 user_id·공유면 구성원 농장만). 할 일 탭에 개인/구성원 토글 + (농장 2개 이상이면) 공유 농장 select(기본 대표농장) 추가. 공유 할 일엔 "구성원 · 작성자명" 배지 표시. 홈 위젯도 공유 할 일 함께 노출.
+  - ⚠️ 적용하려면 Supabase에 `supabase_migration_016_todo_scope.sql` 실행 필요.
+

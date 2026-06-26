@@ -76,23 +76,35 @@ export interface PeriodSummary {
   otherExtraCostTotal: number;
 }
 
-const applyFarm = (query: any, farmId?: string) =>
-  farmId ? query.eq('farm_id', farmId) : query;
+// 조회 범위 적용:
+//  · farmId 지정 → 해당 농장 전체(구성원 데이터 포함). RLS(015)가 접근을 보장.
+//  · farmIds(접근 가능 농장 목록) 지정 → 그 농장 전체 + 본인의 농장 미지정(farm_id null) 기록.
+//  · 둘 다 없으면 → 기존처럼 본인(user_id) 기록만.
+const applyScope = (query: any, userId: string, farmId?: string, farmIds?: string[]) => {
+  if (farmId) return query.eq('farm_id', farmId);
+  if (farmIds && farmIds.length) {
+    const list = farmIds.join(',');
+    return query.or(`farm_id.in.(${list}),and(farm_id.is.null,user_id.eq.${userId})`);
+  }
+  return query.eq('user_id', userId);
+};
 
 export async function fetchPeriodSummary(
   userId: string,
   period: PeriodType,
   farmId?: string,
+  farmIds?: string[],
 ): Promise<{ current: PeriodSummary; previous: PeriodSummary; previousYear?: PeriodSummary }> {
   const { curFrom, curTo, prevFrom, prevTo, prevYearFrom, prevYearTo } = getCurrentAndPrevRange(period);
+  const scope = (q: any) => applyScope(q, userId, farmId, farmIds);
 
   const [cH, cS, cO, cL, pH, pS] = await Promise.all([
-    applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('other_records').select('quantity, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('labor_records').select('labor_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
-    applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
+    scope(supabase.from('harvest_records').select('quantity').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('other_records').select('quantity, extra_cost').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('labor_records').select('labor_cost').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('harvest_records').select('quantity').gte('date', prevFrom).lte('date', prevTo)),
+    scope(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').gte('date', prevFrom).lte('date', prevTo)),
   ]);
 
   const sum = (data: any[] | null, key: string) =>
@@ -114,8 +126,8 @@ export async function fetchPeriodSummary(
   let previousYear: PeriodSummary | undefined;
   if (period === 'month' && prevYearFrom && prevYearTo) {
     const [pyH, pyS] = await Promise.all([
-      applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', prevYearFrom).lte('date', prevYearTo), farmId),
-      applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', prevYearFrom).lte('date', prevYearTo), farmId),
+      scope(supabase.from('harvest_records').select('quantity').gte('date', prevYearFrom).lte('date', prevYearTo)),
+      scope(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').gte('date', prevYearFrom).lte('date', prevYearTo)),
     ]);
     const pyRevenue = sum(pyS.data, 'total_revenue');
     previousYear = {
@@ -148,7 +160,7 @@ export async function fetchPeriodSummary(
   };
 }
 
-export function useStats(userId: string | undefined, farmId?: string) {
+export function useStats(userId: string | undefined, farmId?: string, farmIds?: string[]) {
   const [stats, setStats] = useState<DailyStat[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -158,22 +170,22 @@ export function useStats(userId: string | undefined, farmId?: string) {
     const { from, to } = getDateRange(period);
 
     const [harvestRes, salesRes] = await Promise.all([
-      applyFarm(
-        supabase.from('harvest_records').select('date, quantity').eq('user_id', userId).gte('date', from).lte('date', to).order('date'),
-        farmId
+      applyScope(
+        supabase.from('harvest_records').select('date, quantity').gte('date', from).lte('date', to).order('date'),
+        userId, farmId, farmIds
       ),
-      applyFarm(
-        supabase.from('sales_records').select('date, quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', from).lte('date', to).order('date'),
-        farmId
+      applyScope(
+        supabase.from('sales_records').select('date, quantity, total_revenue, commission_amount, extra_cost').gte('date', from).lte('date', to).order('date'),
+        userId, farmId, farmIds
       ),
     ]);
 
     const map: Record<string, DailyStat> = {};
-    harvestRes.data?.forEach((r) => {
+    harvestRes.data?.forEach((r: any) => {
       if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 };
       map[r.date].harvest += r.quantity;
     });
-    salesRes.data?.forEach((r) => {
+    salesRes.data?.forEach((r: any) => {
       if (!map[r.date]) map[r.date] = { date: r.date, harvest: 0, sales: 0, revenue: 0, netRevenue: 0 };
       map[r.date].sales += r.quantity;
       map[r.date].revenue += r.total_revenue;
@@ -182,7 +194,7 @@ export function useStats(userId: string | undefined, farmId?: string) {
 
     setStats(Object.values(map).sort((a, b) => a.date.localeCompare(b.date)));
     setLoading(false);
-  }, [userId, farmId]);
+  }, [userId, farmId, farmIds]);
 
   return { stats, loading, fetchStats };
 }
@@ -201,14 +213,15 @@ export async function fetchPriceHistory(
   from: string,
   to: string,
   farmId?: string,
+  farmIds?: string[],
 ): Promise<PricePoint[]> {
-  const q = applyFarm(
+  const q = applyScope(
     supabase.from('sales_records')
       .select('date, price_per_unit, crop_type, variety, size')
-      .eq('user_id', userId).gte('date', from).lte('date', to)
+      .gte('date', from).lte('date', to)
       .order('date')
       .limit(2000),
-    farmId,
+    userId, farmId, farmIds,
   );
   const { data } = await q;
   return (data ?? [])
@@ -233,11 +246,11 @@ export interface TrendDetailRow {
 }
 
 export async function fetchTrendDetail(
-  userId: string, from: string, to: string, farmId?: string,
+  userId: string, from: string, to: string, farmId?: string, farmIds?: string[],
 ): Promise<{ harvest: TrendDetailRow[]; sales: TrendDetailRow[] }> {
   const [h, s] = await Promise.all([
-    applyFarm(supabase.from('harvest_records').select('date, crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to), farmId),
-    applyFarm(supabase.from('sales_records').select('date, crop_type, variety, size, total_revenue').eq('user_id', userId).gte('date', from).lte('date', to), farmId),
+    applyScope(supabase.from('harvest_records').select('date, crop_type, variety, size, quantity').gte('date', from).lte('date', to), userId, farmId, farmIds),
+    applyScope(supabase.from('sales_records').select('date, crop_type, variety, size, total_revenue').gte('date', from).lte('date', to), userId, farmId, farmIds),
   ]);
   const mapRow = (valueKey: string) => (r: any): TrendDetailRow => ({
     date: r.date,
@@ -252,7 +265,7 @@ export async function fetchTrendDetail(
   };
 }
 
-export async function fetchSummary(userId: string) {
+export async function fetchSummary(userId: string, farmIds?: string[]) {
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   const yesterday = new Date(today);
@@ -270,18 +283,19 @@ export async function fetchSummary(userId: string) {
   const lastWeekStartStr = lastWeekStart.toISOString().split('T')[0];
   const lastWeekEndStr = lastWeekEnd.toISOString().split('T')[0];
 
+  const scope = (q: any) => applyScope(q, userId, undefined, farmIds);
   const [
     todayHarvest, yesterdayHarvest, weekHarvest, lastWeekHarvest,
     todaySales, yesterdaySales, weekSales, lastWeekSales,
   ] = await Promise.all([
-    supabase.from('harvest_records').select('quantity').eq('user_id', userId).eq('date', todayStr),
-    supabase.from('harvest_records').select('quantity').eq('user_id', userId).eq('date', yesterdayStr),
-    supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', weekStartStr).lte('date', todayStr),
-    supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', lastWeekStartStr).lte('date', lastWeekEndStr),
-    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).eq('date', todayStr),
-    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).eq('date', yesterdayStr),
-    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', weekStartStr).lte('date', todayStr),
-    supabase.from('sales_records').select('total_revenue').eq('user_id', userId).gte('date', lastWeekStartStr).lte('date', lastWeekEndStr),
+    scope(supabase.from('harvest_records').select('quantity').eq('date', todayStr)),
+    scope(supabase.from('harvest_records').select('quantity').eq('date', yesterdayStr)),
+    scope(supabase.from('harvest_records').select('quantity').gte('date', weekStartStr).lte('date', todayStr)),
+    scope(supabase.from('harvest_records').select('quantity').gte('date', lastWeekStartStr).lte('date', lastWeekEndStr)),
+    scope(supabase.from('sales_records').select('total_revenue').eq('date', todayStr)),
+    scope(supabase.from('sales_records').select('total_revenue').eq('date', yesterdayStr)),
+    scope(supabase.from('sales_records').select('total_revenue').gte('date', weekStartStr).lte('date', todayStr)),
+    scope(supabase.from('sales_records').select('total_revenue').gte('date', lastWeekStartStr).lte('date', lastWeekEndStr)),
   ]);
 
   const s = (d: any, k: string) => d?.data?.reduce((acc: number, r: any) => acc + (r[k] ?? 0), 0) ?? 0;
@@ -301,13 +315,13 @@ export async function fetchSummary(userId: string) {
 }
 
 export async function fetchBreakdown(
-  userId: string, from: string, to: string, farmId?: string
+  userId: string, from: string, to: string, farmId?: string, farmIds?: string[]
 ): Promise<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[]; byVarietySize: BreakdownItem[] }> {
-  const applyFarm = (q: any) => farmId ? q.eq('farm_id', farmId) : q;
+  const scope = (q: any) => applyScope(q, userId, farmId, farmIds);
   const [harvestRes, salesRes, otherRes] = await Promise.all([
-    applyFarm(supabase.from('harvest_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to)),
-    applyFarm(supabase.from('sales_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to)),
-    applyFarm(supabase.from('other_records').select('crop_type, variety, size, quantity').eq('user_id', userId).gte('date', from).lte('date', to)),
+    scope(supabase.from('harvest_records').select('crop_type, variety, size, quantity').gte('date', from).lte('date', to)),
+    scope(supabase.from('sales_records').select('crop_type, variety, size, quantity').gte('date', from).lte('date', to)),
+    scope(supabase.from('other_records').select('crop_type, variety, size, quantity').gte('date', from).lte('date', to)),
   ]);
 
   type Row = { crop_type?: string | null; variety?: string | null; size?: string | null; quantity: number };
@@ -338,14 +352,16 @@ export async function fetchPeriodSummaryForRange(
   curFrom: string, curTo: string,
   prevFrom: string, prevTo: string,
   farmId?: string,
+  farmIds?: string[],
 ): Promise<{ current: PeriodSummary; previous: PeriodSummary }> {
+  const scope = (q: any) => applyScope(q, userId, farmId, farmIds);
   const [cH, cS, cO, cL, pH, pS] = await Promise.all([
-    applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('other_records').select('quantity, extra_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('labor_records').select('labor_cost').eq('user_id', userId).gte('date', curFrom).lte('date', curTo), farmId),
-    applyFarm(supabase.from('harvest_records').select('quantity').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
-    applyFarm(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', prevFrom).lte('date', prevTo), farmId),
+    scope(supabase.from('harvest_records').select('quantity').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('other_records').select('quantity, extra_cost').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('labor_records').select('labor_cost').gte('date', curFrom).lte('date', curTo)),
+    scope(supabase.from('harvest_records').select('quantity').gte('date', prevFrom).lte('date', prevTo)),
+    scope(supabase.from('sales_records').select('quantity, total_revenue, commission_amount, extra_cost').gte('date', prevFrom).lte('date', prevTo)),
   ]);
   const sum = (data: any[] | null, key: string) => data?.reduce((s: number, r: any) => s + (r[key] ?? 0), 0) ?? 0;
   const curRevenue = sum(cS.data, 'total_revenue');
@@ -377,10 +393,10 @@ export async function fetchPeriodSummaryForRange(
 }
 
 // 바차트용: 특정 날짜 범위의 일별 통계
-export async function fetchStatsForRange(userId: string, from: string, to: string, farmId?: string): Promise<DailyStat[]> {
+export async function fetchStatsForRange(userId: string, from: string, to: string, farmId?: string, farmIds?: string[]): Promise<DailyStat[]> {
   const [harvestRes, salesRes] = await Promise.all([
-    applyFarm(supabase.from('harvest_records').select('date, quantity').eq('user_id', userId).gte('date', from).lte('date', to).order('date'), farmId),
-    applyFarm(supabase.from('sales_records').select('date, quantity, total_revenue, commission_amount, extra_cost').eq('user_id', userId).gte('date', from).lte('date', to).order('date'), farmId),
+    applyScope(supabase.from('harvest_records').select('date, quantity').gte('date', from).lte('date', to).order('date'), userId, farmId, farmIds),
+    applyScope(supabase.from('sales_records').select('date, quantity, total_revenue, commission_amount, extra_cost').gte('date', from).lte('date', to).order('date'), userId, farmId, farmIds),
   ]);
   const map: Record<string, DailyStat> = {};
   harvestRes.data?.forEach((r: any) => {

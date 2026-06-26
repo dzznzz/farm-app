@@ -11,11 +11,13 @@ import { PhIcon } from '../../components/ui/PhIcon';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
+import { myFarms, MyFarm } from '../../lib/farmAccess';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../components/ui/Toast';
 import { TimePickerModal } from '../../components/modals/TimePickerModal';
 import { CalendarModal } from '../../components/modals/CalendarModal';
+import { SelectModal } from '../../components/modals/SelectModal';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 if (Platform.OS !== 'web') {
@@ -36,6 +38,10 @@ interface Todo {
   time: string | null;
   text: string;
   completed: boolean;
+  scope: 'personal' | 'shared';
+  farmId: string | null;
+  ownerId: string;
+  authorName?: string | null; // 다른 구성원이 등록한 공유 할 일의 작성자명
 }
 
 function formatDisplayDate(dateStr: string) {
@@ -105,6 +111,11 @@ export default function TodoScreen() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showAlarmTooltip, setShowAlarmTooltip] = useState(false);
   const [showEditAlarmTooltip, setShowEditAlarmTooltip] = useState(false);
+  // 개인/구성원 구분
+  const [scope, setScope] = useState<'personal' | 'shared'>('personal');
+  const [farmList, setFarmList] = useState<MyFarm[]>([]);
+  const [sharedFarmId, setSharedFarmId] = useState<string | null>(null);
+  const [showFarmPicker, setShowFarmPicker] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -112,15 +123,39 @@ export default function TodoScreen() {
     }
   }, []);
 
+  // 참여 중인 농장 목록 (구성원 할 일의 농장 지정용) — 기본값은 대표 농장
+  useEffect(() => {
+    if (!user) return;
+    myFarms(user.id).then((fs) => {
+      setFarmList(fs);
+      setSharedFarmId((prev) => prev ?? (fs.find((f) => f.is_primary) ?? fs[0])?.id ?? null);
+    }).catch(() => {});
+  }, [user]);
+
   const load = async (d: string) => {
     if (!user) return;
+    // RLS: 본인 할 일 + 내가 속한 농장의 공유 할 일이 함께 조회된다.
     const { data } = await supabase
       .from('todos')
-      .select('*')
-      .eq('user_id', user.id)
+      .select('id, date, time, text, completed, scope, farm_id, user_id, created_at')
       .eq('date', d)
       .order('created_at');
-    setTodos(sortByTime(data ?? []));
+    const rows = data ?? [];
+    // 다른 구성원이 등록한 공유 할 일의 작성자 이름 매핑
+    const otherIds = Array.from(new Set(
+      rows.filter((r: any) => r.scope === 'shared' && r.user_id !== user.id).map((r: any) => r.user_id)
+    ));
+    let nameMap: Record<string, string> = {};
+    if (otherIds.length) {
+      const { data: profs } = await supabase.from('profiles').select('id, name').in('id', otherIds);
+      (profs ?? []).forEach((p: any) => { nameMap[p.id] = p.name; });
+    }
+    const mapped: Todo[] = rows.map((r: any) => ({
+      id: r.id, date: r.date, time: r.time, text: r.text, completed: r.completed,
+      scope: r.scope ?? 'personal', farmId: r.farm_id ?? null, ownerId: r.user_id,
+      authorName: r.scope === 'shared' && r.user_id !== user.id ? (nameMap[r.user_id] ?? '구성원') : null,
+    }));
+    setTodos(sortByTime(mapped));
   };
 
   useFocusEffect(useCallback(() => { load(date); }, [date, user]));
@@ -144,6 +179,8 @@ export default function TodoScreen() {
     setShowCalendar(false);
     setShowAlarmTooltip(false);
     setShowEditAlarmTooltip(false);
+    setScope('personal');
+    setShowFarmPicker(false);
   }, [today]));
 
   const handleDateChange = (delta: number) => {
@@ -158,9 +195,12 @@ export default function TodoScreen() {
     if (!newTime.trim()) { toast.error('시간을 선택해주세요.'); return; }
     if (!user) return;
 
+    const farmId = scope === 'shared' ? sharedFarmId : null;
+    if (scope === 'shared' && !farmId) { toast.error('공유할 농장을 선택해주세요.'); return; }
+
     const { data, error } = await supabase
       .from('todos')
-      .insert({ user_id: user.id, date, text, time: newTime, completed: false })
+      .insert({ user_id: user.id, date, text, time: newTime, completed: false, scope, farm_id: farmId })
       .select()
       .single();
     if (!error && data) {
@@ -170,11 +210,17 @@ export default function TodoScreen() {
           await scheduleAlarm(data.id, date, newTime, text);
         }
       }
-      setTodos((prev) => sortByTime([...prev, data]));
+      const added: Todo = {
+        id: data.id, date: data.date, time: data.time, text: data.text, completed: data.completed,
+        scope: data.scope ?? 'personal', farmId: data.farm_id ?? null, ownerId: data.user_id, authorName: null,
+      };
+      setTodos((prev) => sortByTime([...prev, added]));
       setNewText('');
       setNewTime('00:00');
       setNewAlarm(false);
       toast.success('저장되었습니다.');
+    } else if (error) {
+      toast.error('저장에 실패했습니다.');
     }
   };
 
@@ -361,12 +407,22 @@ export default function TodoScreen() {
                         <Text style={[styles.todoText, todo.completed && styles.todoTextDone]}>
                           {todo.text}
                         </Text>
-                        {todo.time ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
-                            <PhIcon name="clock" size={12} color={Colors.textSub} />
-                            <Text style={styles.todoTime}>{todo.time}</Text>
-                          </View>
-                        ) : null}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                          {todo.time ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <PhIcon name="clock" size={12} color={Colors.textSub} />
+                              <Text style={styles.todoTime}>{todo.time}</Text>
+                            </View>
+                          ) : null}
+                          {todo.scope === 'shared' ? (
+                            <View style={styles.todoSharedBadge}>
+                              <PhIcon name="users-three" size={10} color={Colors.primary} />
+                              <Text style={styles.todoSharedText}>
+                                {todo.authorName ? `구성원 · ${todo.authorName}` : '구성원'}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
                       </View>
                       <TouchableOpacity onPress={() => handleStartEdit(todo)} style={styles.editBtn}>
                         <Text style={styles.editBtnText}>수정</Text>
@@ -393,6 +449,34 @@ export default function TodoScreen() {
               onSubmitEditing={handleAdd}
               returnKeyType="done"
             />
+            {/* 구분: 개인 / 구성원 */}
+            <View style={styles.scopeRow}>
+              <TouchableOpacity
+                style={[styles.scopeBtn, scope === 'personal' && styles.scopeBtnActive]}
+                onPress={() => setScope('personal')}
+              >
+                <PhIcon name="user" size={13} color={scope === 'personal' ? Colors.primary : Colors.textSub} />
+                <Text style={[styles.scopeBtnText, scope === 'personal' && styles.scopeBtnTextActive]}>개인</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.scopeBtn, scope === 'shared' && styles.scopeBtnActive]}
+                onPress={() => {
+                  if (!farmList.length) { toast.info('참여 중인 농장이 없어요.'); return; }
+                  setScope('shared');
+                }}
+              >
+                <PhIcon name="users-three" size={13} color={scope === 'shared' ? Colors.primary : Colors.textSub} />
+                <Text style={[styles.scopeBtnText, scope === 'shared' && styles.scopeBtnTextActive]}>구성원</Text>
+              </TouchableOpacity>
+              {scope === 'shared' && farmList.length > 1 && (
+                <TouchableOpacity style={styles.farmPickBtn} onPress={() => setShowFarmPicker(true)}>
+                  <Text style={styles.farmPickText} numberOfLines={1}>
+                    {farmList.find((f) => f.id === sharedFarmId)?.name ?? '농장 선택'}
+                  </Text>
+                  <Text style={styles.farmPickArrow}>▾</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <View style={styles.addBottomRow}>
               <TouchableOpacity style={styles.addTimeBtn} onPress={() => setShowTimePicker(true)}>
                 <Text style={[styles.addTimeBtnText, newTime ? styles.addTimeBtnActive : null]}>
@@ -455,6 +539,14 @@ export default function TodoScreen() {
         value={date}
         onSelect={(d) => { setDate(d); load(d); setShowCalendar(false); }}
         onClose={() => setShowCalendar(false)}
+      />
+      <SelectModal
+        visible={showFarmPicker}
+        title="공유할 농장"
+        options={farmList.map((f) => f.name)}
+        value={farmList.find((f) => f.id === sharedFarmId)?.name ?? ''}
+        onSelect={(name) => { const f = farmList.find((x) => x.name === name); if (f) setSharedFarmId(f.id); }}
+        onClose={() => setShowFarmPicker(false)}
       />
 
       {/* 저장 전 입력값이 있는 상태에서 탭 이동 시 확인 */}
@@ -589,6 +681,30 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   addBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  scopeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  scopeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  scopeBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryUltraLight },
+  scopeBtnText: { fontSize: 12, color: Colors.textSub, fontWeight: '600' },
+  scopeBtnTextActive: { color: Colors.primary, fontWeight: '700' },
+  farmPickBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  farmPickText: { fontSize: 12, color: Colors.text, fontWeight: '600', flexShrink: 1 },
+  farmPickArrow: { fontSize: 11, color: Colors.textSub, paddingLeft: 6 },
+  todoSharedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.full,
+    paddingHorizontal: 6, paddingVertical: 1,
+  },
+  todoSharedText: { fontSize: 10, color: Colors.primary, fontWeight: '700' },
   addTimeBtn: {
     flex: 1, backgroundColor: Colors.background,
     borderRadius: Radius.md, paddingHorizontal: Spacing.md,

@@ -107,6 +107,47 @@ export async function myOwnedFarms(userId: string): Promise<OwnedFarm[]> {
     .map((f: any) => ({ id: f.id, name: f.name, crop_type: f.crop_type, address: f.address }));
 }
 
+// 내가 접근 가능한(소유+참여) 농장 ID 목록 — 데이터 조회 범위 산정용.
+// 데이터 테이블 쿼리에서 user_id 대신 이 농장들 기준으로 조회하면
+// 구성원이 공유 농장 데이터를 함께 볼 수 있다(RLS는 마이그레이션 015가 이미 허용).
+export async function accessibleFarmIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('farm_members')
+    .select('farm_id')
+    .eq('user_id', userId);
+  if (error) throw error;
+  return (data ?? []).map((r: any) => r.farm_id).filter(Boolean);
+}
+
+export interface MyFarm {
+  id: string;
+  name: string;
+  crop_type: string;
+  is_primary: boolean;
+  role: 'owner' | 'member';
+}
+
+// 내가 속한 모든 농장(소유+참여) — 입력/통계 농장 선택용.
+export async function myFarms(userId: string): Promise<MyFarm[]> {
+  const { data, error } = await supabase
+    .from('farm_members')
+    .select('role, farms(id, name, crop_type, is_primary)')
+    .eq('user_id', userId);
+  if (error) throw error;
+  return (data ?? [])
+    .filter((r: any) => r.farms)
+    .map((r: any) => ({
+      id: r.farms.id,
+      name: r.farms.name,
+      crop_type: r.farms.crop_type,
+      is_primary: r.farms.is_primary ?? false,
+      role: r.role,
+    }))
+    // 대표 농장 우선, 그다음 이름순
+    .sort((a: MyFarm, b: MyFarm) =>
+      (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0) || a.name.localeCompare(b.name));
+}
+
 export interface JoinedFarm extends OwnedFarm {
   role: 'owner' | 'member';
 }

@@ -13,9 +13,10 @@ interface Props {
   from: string;
   to: string;
   farmId?: string;
+  farmIds?: string[];
 }
 
-export function BreakdownModal({ visible, onClose, userId, from, to, farmId }: Props) {
+export function BreakdownModal({ visible, onClose, userId, from, to, farmId, farmIds }: Props) {
   const [tab, setTab] = useState<TabKey>('crop');
   const [data, setData] = useState<{ byCrop: BreakdownItem[]; byVariety: BreakdownItem[]; bySize: BreakdownItem[] } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,8 +24,8 @@ export function BreakdownModal({ visible, onClose, userId, from, to, farmId }: P
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    fetchBreakdown(userId, from, to, farmId).then((d) => { setData(d); setLoading(false); });
-  }, [visible, userId, from, to, farmId]);
+    fetchBreakdown(userId, from, to, farmId, farmIds).then((d) => { setData(d); setLoading(false); });
+  }, [visible, userId, from, to, farmId, farmIds]);
 
   const items = data ? (tab === 'crop' ? data.byCrop : tab === 'variety' ? data.byVariety : data.bySize) : [];
   const maxVal = items.reduce((m, i) => Math.max(m, i.harvest, i.sales), 1);

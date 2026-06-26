@@ -15,6 +15,26 @@
 
 ---
 
+## 2026-06-26 — 22차 작업 (TO-BE 21 + 판매단가 select 정렬)
+
+### 21. 농장 멤버십 구조 변경 — 데이터 조회 재배선 + 할 일 개인/구성원
+- **데이터 조회 재배선**(`lib/farmAccess.ts`, `hooks/useStats.ts`)
+  - `accessibleFarmIds`(소유+참여 농장 ID), `myFarms`(소유+참여 목록, 대표농장 우선) 헬퍼 신설.
+  - 모든 조회 함수(`fetchPeriodSummary(ForRange)`·`fetchStatsForRange`·`fetchBreakdown`·`fetchPriceHistory`·`fetchTrendDetail`·`fetchSummary`·`useStats`)를 `applyScope`로 통일: **특정 농장 선택 → 그 농장 전체(구성원 데이터 포함)** / 미선택 → **접근 가능 농장 전체 + 본인 농장 미지정(`farm_id=NULL`) 기록** / 멤버십 없으면 기존처럼 본인만(안전 폴백). RLS 015가 구성원 조회 허용.
+- **통계/홈**(`statistics.tsx`, `index.tsx`, `BreakdownModal.tsx`): 농장 필터·요약 집계를 `myFarms`/`accessibleFarmIds` 기준으로 전환(소유만 → 소유+참여). `BreakdownModal`에 `farmIds` 전달. 홈 위젯도 공유 할 일 함께 노출.
+- **입력**(`input.tsx`, `RecordDetailModal.tsx`): 농장 선택지를 `myFarms`로, 일별 내역을 접근 가능 농장 범위로 조회(구성원 기록 함께 표시). `DisplayRecord.ownerId` 추가 → **본인 것만 수정·삭제** 버튼 노출, 타 구성원 기록은 "구성원" 배지로 읽기 전용(그룹 내 행이 모두 본인일 때만 편집 가능).
+- **할 일 개인/구성원**(`todo.tsx`)
+  - **마이그레이션 016**(`supabase_migration_016_todo_scope.sql`): `todos`에 `scope('personal'|'shared')`·`farm_id` 추가, `scope='shared'`면 `farm_id` 필수(CHECK), RLS 세분화 — 조회/수정/삭제 = 본인 것 + 내가 속한 농장의 공유 할 일(**협업형**), 입력 = 본인 user_id·공유면 구성원 농장만.
+  - 할 일 탭에 개인/구성원 토글 + (농장 2개 이상이면) 공유 농장 select(기본 대표농장). 공유 할 일엔 "구성원 · 작성자명" 배지 표시(작성자명은 `profiles` 조회).
+- ⚠️ **적용**: Supabase에 `supabase_migration_016_todo_scope.sql` 실행 필요(015 선행).
+- 선택 결정(사용자 확인): 공유 할 일 = 협업형 / 구성원 할 일 농장 지정 = 대표농장 기본+선택 / 타 구성원 기록 = 본인 것만 수정·삭제.
+
+### 통계 > 판매단가 추이 select를 common_code `sort_order` 순으로 정렬 (`statistics.tsx`)
+- 판매단가 추이의 작물/품종/사이즈 select는 판매 데이터에서 값을 뽑아 `sort_order`를 무시하고 있었음 → `listCodes('crop'|'vari'|'size')`로 순서를 미리 로드해 `name → rank` 맵 구성, `orderByCode`로 옵션을 정렬(코드에 없는 값은 뒤로, 그들끼리는 이름순).
+- 점검 결과 입력 폼(`InputFormModal`)·관리자 데이터관리(`AdminDataPage`)의 common_code 기반 select는 이미 `lib/commonCode.ts` 헬퍼(`.order('sort_order')`)를 거쳐 정렬됨 → 수정 불필요. 즉 데이터에서 직접 옵션을 뽑던 통계 판매단가 select만 보정하면 전 페이지가 sort_order를 따름.
+
+---
+
 ## 2026-06-25 — 21차 작업 (TO-BE 16~20)
 
 ### 16. 탭 이동 — 재진입 시 초기화 + 저장 전 입력 경고

@@ -15,6 +15,8 @@ import {
   PeriodSummary, PricePoint, TrendDetailRow,
 } from '../../hooks/useStats';
 import { supabase } from '../../lib/supabase';
+import { myFarms, accessibleFarmIds } from '../../lib/farmAccess';
+import { listCodes } from '../../lib/commonCode';
 import { Card } from '../../components/ui/Card';
 import { StatBadge } from '../../components/ui/StatBadge';
 import { SummaryCard } from '../../components/cards/SummaryCard';
@@ -284,8 +286,9 @@ export default function StatisticsScreen() {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showExport, setShowExport] = useState(false);
 
-  // 농장 필터
+  // 농장 필터 (소유+참여 농장 전체)
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
+  const [farmIds, setFarmIds] = useState<string[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string | undefined>(undefined);
 
   const [periodSummary, setPeriodSummary] = useState<{
@@ -309,12 +312,33 @@ export default function StatisticsScreen() {
   const [priceSize, setPriceSize] = useState<string | null>(null);
   const [priceSelectField, setPriceSelectField] = useState<'crop' | 'variety' | 'size' | null>(null);
   const [priceChartWidth, setPriceChartWidth] = useState(0);
+  // common_code 정렬 순서(name → sort_order 기반 rank). 판매단가 select 정렬용.
+  const [codeRank, setCodeRank] = useState<{ crop: Record<string, number>; vari: Record<string, number>; size: Record<string, number> }>(
+    { crop: {}, vari: {}, size: {} }
+  );
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('farms').select('id, name').eq('user_id', user.id)
-      .then(({ data }) => setFarms(data ?? []));
+    // 소유+참여 농장 전체를 필터로 노출하고, 접근 가능 농장 ID 로 조회 범위를 잡는다.
+    myFarms(user.id)
+      .then((fs) => setFarms(fs.map((f) => ({ id: f.id, name: f.name }))))
+      .catch(() => setFarms([]));
+    accessibleFarmIds(user.id)
+      .then(setFarmIds)
+      .catch(() => setFarmIds([]));
   }, [user]);
+
+  // common_code(작물/품종/사이즈)의 sort_order 순서를 미리 로드해 select 정렬에 사용.
+  useEffect(() => {
+    const toRank = (rows: { name: string }[]) => {
+      const m: Record<string, number> = {};
+      rows.forEach((r, i) => { if (m[r.name] === undefined) m[r.name] = i; });
+      return m;
+    };
+    Promise.all([listCodes('crop'), listCodes('vari'), listCodes('size')])
+      .then(([crop, vari, size]) => setCodeRank({ crop: toRank(crop), vari: toRank(vari), size: toRank(size) }))
+      .catch(() => {});
+  }, []);
 
   const loadAll = useCallback(async (p: PeriodType, date: string) => {
     if (!user) return;
@@ -329,18 +353,18 @@ export default function StatisticsScreen() {
     const priceRange = getPriceRange(date, p);
 
     const [summaryResult, statsData, breakdownResult, prices, detail] = await Promise.all([
-      fetchPeriodSummaryForRange(user.id, curF, curT, prevF, prevT, selectedFarmId),
-      fetchStatsForRange(user.id, barF, curT, selectedFarmId),
-      fetchBreakdown(user.id, curF, curT, selectedFarmId),
-      fetchPriceHistory(user.id, priceRange.from, priceRange.to, selectedFarmId),
-      fetchTrendDetail(user.id, barF, curT, selectedFarmId),
+      fetchPeriodSummaryForRange(user.id, curF, curT, prevF, prevT, selectedFarmId, farmIds),
+      fetchStatsForRange(user.id, barF, curT, selectedFarmId, farmIds),
+      fetchBreakdown(user.id, curF, curT, selectedFarmId, farmIds),
+      fetchPriceHistory(user.id, priceRange.from, priceRange.to, selectedFarmId, farmIds),
+      fetchTrendDetail(user.id, barF, curT, selectedFarmId, farmIds),
     ]);
 
     let previousYear: PeriodSummary | undefined;
     if (p === 'month' && range.prevYearFrom && range.prevYearTo) {
       const pyResult = await fetchPeriodSummaryForRange(
         user.id, range.prevYearFrom, range.prevYearTo,
-        range.prevYearFrom, range.prevYearTo, selectedFarmId
+        range.prevYearFrom, range.prevYearTo, selectedFarmId, farmIds
       );
       previousYear = pyResult.current;
     }
@@ -352,11 +376,11 @@ export default function StatisticsScreen() {
     setTrendDetail(detail);
     setSummaryLoading(false);
     setBarLoading(false);
-  }, [user, selectedFarmId]);
+  }, [user, selectedFarmId, farmIds]);
 
   useEffect(() => {
     loadAll(period, selectedDate);
-  }, [period, selectedDate, selectedFarmId, user?.id]);
+  }, [period, selectedDate, selectedFarmId, farmIds, user?.id]);
 
   useEffect(() => {
     if (paramPeriod && ['day', 'week', 'month', 'year'].includes(paramPeriod)) {
@@ -415,12 +439,19 @@ export default function StatisticsScreen() {
 
   // 판매 단가: 작물·품종·사이즈 select(데이터관리 방식)로 구분 선택
   const ALL = '전체';
-  const priceCropOptions = [ALL, ...Array.from(new Set(priceHistory.map((p) => p.crop).filter(Boolean)))];
+  // 데이터에서 뽑은 값들을 common_code 의 sort_order 순서로 정렬(코드에 없는 값은 뒤로, 그들끼리는 이름순)
+  const orderByCode = (values: string[], rank: Record<string, number>) =>
+    [...values].sort((a, b) => {
+      const ra = rank[a] ?? Number.MAX_SAFE_INTEGER;
+      const rb = rank[b] ?? Number.MAX_SAFE_INTEGER;
+      return ra - rb || a.localeCompare(b);
+    });
+  const priceCropOptions = [ALL, ...orderByCode(Array.from(new Set(priceHistory.map((p) => p.crop).filter(Boolean))), codeRank.crop)];
   // 선택된 작물에 따라 품종 옵션 좁힘 (cascading)
   const cropFiltered = priceHistory.filter((p) => !priceCrop || priceCrop === ALL || p.crop === priceCrop);
-  const priceVarietyOptions = [ALL, ...Array.from(new Set(cropFiltered.map((p) => p.variety).filter(Boolean)))];
+  const priceVarietyOptions = [ALL, ...orderByCode(Array.from(new Set(cropFiltered.map((p) => p.variety).filter(Boolean))), codeRank.vari)];
   const varietyFiltered = cropFiltered.filter((p) => !priceVariety || priceVariety === ALL || p.variety === priceVariety);
-  const priceSizeOptions = [ALL, ...Array.from(new Set(varietyFiltered.map((p) => p.size).filter(Boolean)))];
+  const priceSizeOptions = [ALL, ...orderByCode(Array.from(new Set(varietyFiltered.map((p) => p.size).filter(Boolean))), codeRank.size)];
   const sizeFiltered = varietyFiltered.filter((p) => !priceSize || priceSize === ALL || p.size === priceSize);
   const activePriceCrop = priceCrop && priceCropOptions.includes(priceCrop) ? priceCrop : ALL;
   const activePriceVariety = priceVariety && priceVarietyOptions.includes(priceVariety) ? priceVariety : ALL;
@@ -1048,7 +1079,7 @@ export default function StatisticsScreen() {
 
       {user && showBreakdown && (
         <BreakdownModal visible={showBreakdown} onClose={() => setShowBreakdown(false)}
-          userId={user.id} from={curFrom} to={curTo} farmId={selectedFarmId} />
+          userId={user.id} from={curFrom} to={curTo} farmId={selectedFarmId} farmIds={farmIds} />
       )}
       {user && showExport && (
         <ExportModal visible={showExport} onClose={() => setShowExport(false)} userId={user.id} />

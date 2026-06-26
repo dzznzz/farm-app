@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { PhIcon } from '../../components/ui/PhIcon';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchSummary } from '../../hooks/useStats';
+import { accessibleFarmIds } from '../../lib/farmAccess';
 import { supabase } from '../../lib/supabase';
 import { SummaryCard } from '../../components/cards/SummaryCard';
 import { Card } from '../../components/ui/Card';
@@ -53,10 +54,10 @@ export default function HomeScreen() {
 
   const loadTodos = async () => {
     if (!user) return;
+    // RLS: 본인 할 일 + 내가 속한 농장의 공유 할 일이 함께 조회된다.
     const { data } = await supabase
       .from('todos')
       .select('id, text, time, completed')
-      .eq('user_id', user.id)
       .eq('date', today)
       .order('created_at');
     setTodos(sortByTime(data ?? []));
@@ -64,8 +65,10 @@ export default function HomeScreen() {
 
   const load = async () => {
     if (!user) return;
+    // 홈 요약은 접근 가능한 농장(소유+참여) 전체 기준으로 집계
+    const ids = await accessibleFarmIds(user.id).catch(() => [] as string[]);
     const [s, p] = await Promise.all([
-      fetchSummary(user.id),
+      fetchSummary(user.id, ids),
       supabase.from('profiles').select('name, region').eq('id', user.id).single(),
     ]);
     setSummary(s);

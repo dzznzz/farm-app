@@ -9,6 +9,7 @@ export interface DisplayRecord {
   id: string;
   type: RecordType;
   date: string;
+  ownerId?: string | null;
   farmId?: string | null;
   farmName?: string | null;
   cropType: string | null;

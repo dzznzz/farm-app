@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { PhIcon } from '../../components/ui/PhIcon';
 import { supabase } from '../../lib/supabase';
+import { myFarms, accessibleFarmIds } from '../../lib/farmAccess';
 import { useAuth } from '../../hooks/useAuth';
 import { Card } from '../../components/ui/Card';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
@@ -136,6 +137,7 @@ export default function InputScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [farms, setFarms] = useState<{ id: string; name: string; crop_type: string; is_primary: boolean }[]>([]);
+  const [farmIds, setFarmIds] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<DisplayRecord | null>(null);
@@ -146,29 +148,38 @@ export default function InputScreen() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('farms').select('id, name, crop_type, is_primary').eq('user_id', user.id)
-      .then(({ data }) => { if (data?.length) setFarms(data); });
+    // 소유+참여 농장 전체를 입력 폼 선택지로, 접근 가능 농장 ID 로 조회 범위를 잡는다.
+    myFarms(user.id)
+      .then((fs) => { if (fs.length) setFarms(fs.map((f) => ({ id: f.id, name: f.name, crop_type: f.crop_type, is_primary: f.is_primary }))); })
+      .catch(() => {});
+    accessibleFarmIds(user.id).then(setFarmIds).catch(() => setFarmIds([]));
   }, [user]);
 
   const loadRecords = useCallback(async (d: string) => {
     if (!user) return;
     setLoading(true);
+    // 조회 범위: 접근 가능한 농장(소유+참여) 전체 + 본인의 농장 미지정 기록.
+    // (RLS는 마이그레이션 015가 구성원 조회를 허용)
+    const scope = (q: any) =>
+      farmIds.length
+        ? q.or(`farm_id.in.(${farmIds.join(',')}),and(farm_id.is.null,user_id.eq.${user.id})`)
+        : q.eq('user_id', user.id);
     const [hRes, sRes, oRes, hnRes, onRes] = await Promise.all([
-      supabase.from('harvest_records')
-        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, created_at')
-        .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
-      supabase.from('sales_records')
-        .select('id, date, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, sale_type, created_at')
-        .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
-      supabase.from('other_records')
-        .select('id, date, farm_id, crop_type, variety, size, quantity, unit, type, recipient, extra_cost, created_at')
-        .eq('user_id', user.id).eq('date', d).order('created_at', { ascending: false }),
-      supabase.from('harvest_notes')
+      scope(supabase.from('harvest_records')
+        .select('id, date, user_id, farm_id, crop_type, variety, size, quantity, unit, created_at')
+        .eq('date', d)).order('created_at', { ascending: false }),
+      scope(supabase.from('sales_records')
+        .select('id, date, user_id, farm_id, crop_type, variety, size, quantity, price_per_unit, total_revenue, commission_rate, commission_amount, extra_cost, buyer, sale_type, created_at')
+        .eq('date', d)).order('created_at', { ascending: false }),
+      scope(supabase.from('other_records')
+        .select('id, date, user_id, farm_id, crop_type, variety, size, quantity, unit, type, recipient, extra_cost, created_at')
+        .eq('date', d)).order('created_at', { ascending: false }),
+      scope(supabase.from('harvest_notes')
         .select('farm_id, crop_type, note')
-        .eq('user_id', user.id).eq('date', d),
-      supabase.from('other_notes')
+        .eq('date', d)),
+      scope(supabase.from('other_notes')
         .select('farm_id, crop_type, note')
-        .eq('user_id', user.id).eq('date', d),
+        .eq('date', d)),
     ]);
 
     const getNote = (data: any[], farmId: string | null, cropType: string | null) =>
@@ -179,14 +190,14 @@ export default function InputScreen() {
 
     const combined: DisplayRecord[] = [
       ...(hRes.data ?? []).map((r: any): DisplayRecord => ({
-        id: r.id, type: 'harvest', date: r.date,
+        id: r.id, type: 'harvest', date: r.date, ownerId: r.user_id,
         farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
         quantity: r.quantity, unit: r.unit,
         note: getNote(hnRes.data ?? [], r.farm_id ?? null, r.crop_type ?? null),
       })),
       ...(sRes.data ?? []).map((r: any): DisplayRecord => ({
-        id: r.id, type: 'sales', date: r.date,
+        id: r.id, type: 'sales', date: r.date, ownerId: r.user_id,
         farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
         quantity: r.quantity, unit: null,
@@ -195,7 +206,7 @@ export default function InputScreen() {
         extraCost: r.extra_cost, buyer: r.buyer, saleType: r.sale_type,
       })),
       ...(oRes.data ?? []).map((r: any): DisplayRecord => ({
-        id: r.id, type: 'other', date: r.date,
+        id: r.id, type: 'other', date: r.date, ownerId: r.user_id,
         farmId: r.farm_id, farmName: getFarmName(r.farm_id),
         cropType: r.crop_type, variety: r.variety, size: r.size,
         quantity: r.quantity, unit: r.unit,
@@ -207,7 +218,7 @@ export default function InputScreen() {
 
     setRecords(combined);
     setLoading(false);
-  }, [user, farms]);
+  }, [user, farms, farmIds]);
 
   useFocusEffect(useCallback(() => { loadRecords(date); }, [date, loadRecords]));
 
@@ -336,6 +347,7 @@ export default function InputScreen() {
             /* ── 판매: 묶음 단위 카드 ── */
             saleGroups.map((sg, gi) => {
               const netRev = sg.totalRevenue - sg.totalCommission - sg.totalExtra;
+              const editable = sg.records.every((r) => r.ownerId === user?.id);
               // 품종별 그룹
               const varietyGroups: { variety: string; records: DisplayRecord[]; totalQty: number; totalRevenue: number }[] = [];
               for (const r of sg.records) {
@@ -361,15 +373,24 @@ export default function InputScreen() {
                         </View>
                       )}
                       <View style={{ flex: 1 }} />
-                      <TouchableOpacity onPress={() => openGroupEdit(sg.records)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.editHint}>수정 ›</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleDeleteGroup(sg.records)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <PhIcon name="trash" size={18} color={Colors.danger} />
-                      </TouchableOpacity>
+                      {editable ? (
+                        <>
+                          <TouchableOpacity onPress={() => openGroupEdit(sg.records)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Text style={styles.editHint}>수정 ›</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteGroup(sg.records)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <PhIcon name="trash" size={18} color={Colors.danger} />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <View style={styles.sharedBadge}>
+                          <PhIcon name="users-three" size={12} color={Colors.textSub} />
+                          <Text style={styles.sharedBadgeText}>구성원</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.groupSubHeader}>
                       <Text style={styles.groupCrop}>{sg.cropType || '(작물 미입력)'}</Text>
@@ -433,6 +454,7 @@ export default function InputScreen() {
               const grandTotal = group.varieties.reduce((sum, vg) => sum + vg.sizes.reduce((s2, sr) => s2 + sr.quantity, 0), 0);
               const grandTotalUnit = group.varieties[0]?.sizes[0]?.unit ?? 'kg';
               const totalItems = group.varieties.reduce((sum, vg) => sum + vg.sizes.length, 0);
+              const editable = group.allRecords.every((r) => r.ownerId === user?.id);
               return (
                 <Card
                   key={`${group.farmId}-${group.cropType}-${group.otherSubType ?? ''}-${gi}`}
@@ -452,15 +474,24 @@ export default function InputScreen() {
                         </View>
                       )}
                       <View style={{ flex: 1 }} />
-                      <TouchableOpacity onPress={() => openGroupEdit(group.allRecords)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.editHint}>수정 ›</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleDeleteGroup(group.allRecords)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <PhIcon name="trash" size={18} color={Colors.danger} />
-                      </TouchableOpacity>
+                      {editable ? (
+                        <>
+                          <TouchableOpacity onPress={() => openGroupEdit(group.allRecords)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Text style={styles.editHint}>수정 ›</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteGroup(group.allRecords)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <PhIcon name="trash" size={18} color={Colors.danger} />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <View style={styles.sharedBadge}>
+                          <PhIcon name="users-three" size={12} color={Colors.textSub} />
+                          <Text style={styles.sharedBadgeText}>구성원</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.groupSubHeader}>
                       <Text style={styles.groupCrop}>{group.cropType || '(작물 미입력)'}</Text>
@@ -652,6 +683,13 @@ const styles = StyleSheet.create({
   typeBadgeText: { fontSize: 11, fontWeight: '700' },
   groupCrop: { fontSize: 16, fontWeight: '800', color: Colors.text },
   editHint: { fontSize: 12, color: Colors.textLight },
+  sharedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: Colors.background, borderRadius: Radius.full,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  sharedBadgeText: { fontSize: 11, fontWeight: '600', color: Colors.textSub },
   deleteGroupBtn: { fontSize: 16 },
   divider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.md },
   varietyBlock: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: 4 },
